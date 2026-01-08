@@ -19,9 +19,9 @@
 clear; clc; close all;
 
 % set paths
-paths.smooth      = '/Users/kamrenkhan/Desktop/Research/Mu Lab/Ecog/analyses/Kamren/smooth-pub';  % UPDATE
-paths.fieldtrip   = '/Users/kamrenkhan/fieldtrip-master';                                         % UPDATE
-paths.freesurfer  = '/Applications/freesurfer/7.3.2';                                             % UPDATE
+paths.smooth      = '/LOCAL/PATH/TO/SMOOTH';        % UPDATE
+paths.fieldtrip   = '/LOCAL/PATH/TO/FIELDTRIP';     % UPDATE
+paths.freesurfer  = '/LOCAL/PATH/TO/FREESURFER';    % UPDATE
 
 % add paths
 addpath(genpath(paths.smooth))
