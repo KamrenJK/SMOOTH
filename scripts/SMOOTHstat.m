@@ -26,6 +26,8 @@ function stat = SMOOTHstat(cfg, varargin)
 %   cfg.clusteralpha     = vertex-level cluster α per tail (default 0.05)
 %   cfg.keepmaps         = 'no' | 'yes'
 %   cfg.keepsurrogates   = 'no' | 'yes' (memory expensive)
+%   cfg.subsamplesurr    = 'no' | 'yes' (randomly sample 100 surrogates to keep to limit RAM demands, default 'yes')
+%   cfg.nsurrsamples     = # subject-level surrogates maps to keep (default 100)
 %
 % Output (stat)
 %   stat.stat, stat.prob, stat.mask, clusters (+ distributions), coverage, cfg
@@ -50,6 +52,8 @@ cfg.minnbsub         = ft_getopt(cfg, 'minnbsub',               3);
 cfg.clusteralpha     = ft_getopt(cfg, 'clusteralpha',        0.05);
 cfg.keepmaps         = ft_getopt(cfg, 'keepmaps',            'no');
 cfg.keepsurrogates   = ft_getopt(cfg, 'keepsurrogates',      'no');
+cfg.subsamplesurr    = ft_getopt(cfg, 'subsamplesurr',      'yes');
+cfg.nsurrsamples     = ft_getopt(cfg, 'nsurrsamples',         100);
 
 % ---- Meshes (fsaverage) and adjacency (for clustering)
 lh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.pial'));
@@ -161,7 +165,11 @@ posdistribution = zeros(cfg.numrandomization,1);
 negdistribution = zeros(cfg.numrandomization,1);
 
 if strcmp(cfg.keepsurrogates, 'yes')
-  surr_subj  = zeros(nSubjects, size(sph.pos,1), cfg.numrandomization);
+    if strcmp(cfg.subsamplesurr, 'yes')
+      surr_subj  = zeros(nSubjects, size(sph.pos,1), cfg.nsurrsamples);
+    else
+      surr_subj  = zeros(nSubjects, size(sph.pos,1), cfg.numrandomization);
+    end
   surr_group = zeros(size(sph.pos,1), cfg.numrandomization);
 end
 
@@ -225,7 +233,13 @@ for iter = 1:cfg.numrandomization+1
 
       permMaps(:,s) = [mapL; mapR];
       if strcmp(cfg.keepsurrogates, 'yes')
-        surr_subj(s,:,iter) = permMaps(:,s);
+          if strcmp(cfg.subsamplesurr, 'yes')
+              if iter <= cfg.nsurrsamples
+                  surr_subj(s,:,iter) = permMaps(:,s);
+              end
+          else
+            surr_subj(s,:,iter) = permMaps(:,s);
+          end
       end
     end
   else
