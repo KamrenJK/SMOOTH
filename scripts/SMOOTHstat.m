@@ -102,12 +102,6 @@ for s = 1:nSubjects
   allmaps(1:nVertL,               s) = mapL;
   allmaps(nVertL+1:nVertL+nVertR, s) = mapR;
 
-  % % FIXME remove: check smoothing
-  % figure;
-  % hold on; ft_plot_mesh(lh, 'vertexcolor', 'curv');
-  % hold on; ft_plot_mesh(lh, 'vertexcolor', mapL);
-  % view([-90 0])
-
   % rank-rescale prep
   rescale_cache = struct();
   m = isfinite(mapL);
@@ -201,11 +195,6 @@ for iter = 1:cfg.numrandomization+1
         otherwise
           error('cfg.randmethod must be ''signflip'' or ''bandrotate''.');
       end
-
-% %%%%%%%%%%
-%       % RESCALE DV AT ELECTRODE LEVEL: JUST FOR TESTING
-%       [~,dvidx] = sort(dvn); dvn(dvidx) = sort(data.stat);
-% %%%%%%%%%%
 
       % (e) Postprocessing: apply same smoothing as empirical
       mapL = elec2map_apply(data.smooth_cache.L, dvn(data.elec.hemi));
