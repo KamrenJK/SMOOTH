@@ -89,3 +89,10 @@ Some figure scripts additionally require common helper utilities (colormaps, DK 
 ## Conclusion
 
 Use *SMOOTH* for **reliable group-level statistics from sparse, heterogeneous iEEG electrode coverage**, with hypothesis generating inference grounded in **spatially valid surrogate data.**
+
+---
+
+## Contact me
+
+Create an issue or reach out to me directly @ kamren[dot]khan[at]pennmedicine[dot]upenn[dot]edu with questions, feedback, or ideas.
+
