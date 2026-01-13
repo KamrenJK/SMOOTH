@@ -96,3 +96,5 @@ Use *SMOOTH* for **reliable group-level statistics from sparse, heterogeneous iE
 
 Create an issue or reach out to me directly @ kamren[dot]khan[at]pennmedicine[dot]upenn[dot]edu with questions, feedback, or ideas.
 
+Mutual Understanding Lab Website: https://www.mutualunderstanding.nl/
+
