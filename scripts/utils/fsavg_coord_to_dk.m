@@ -49,8 +49,8 @@ function [roi_name, roi_index, hemi, vert_idx] = fsavg_coord_to_dk(pos_mm, fshom
   persistent L_pial R_pial kdtL kdtR L_annot L_ctab R_annot R_ctab
   if isempty(L_pial) || isempty(R_pial)
     % Load pial meshes (mm)
-    L_pial = ft_read_headshape(fullfile(fsavg,'surf','lh.pial'));
-    R_pial = ft_read_headshape(fullfile(fsavg,'surf','rh.pial'));
+    L_pial = ft_read_headshape(char(fullfile(fsavg,'surf','lh.pial')));
+    R_pial = ft_read_headshape(char(fullfile(fsavg,'surf','rh.pial')));
 
     % KD-trees for nearest-vertex search
     kdtL   = createns(L_pial.pos, 'NSMethod','kdtree');
