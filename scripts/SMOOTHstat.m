@@ -170,7 +170,13 @@ end
 % main loop: permutations + one empirical pass
 for iter = 1:cfg.numrandomization+1
   if iter <= cfg.numrandomization
-    fprintf(' permutation %d/%d\n', iter, cfg.numrandomization);
+    % check if permutation is a multiple of 100 for printing status to maintain informative output but declutter the command window
+    % initially set at 100 but can be adjusted easily. Might consider making this a cfg option for verbosity? BG
+    if iter == 1
+      fprintf('Initiating permutations: %d/%d\n', iter, cfg.numrandomization);
+    elseif mod(iter,100)==0
+      fprintf('Computing permutation %d/%d\n', iter, cfg.numrandomization);
+    end
 
     permMaps    = nan(size(allmaps)); % V × S
     % sigma5_mm   = 5/(2*sqrt(2*log(2))); % FWHM(=5mm) -> sigma(mm)
@@ -181,7 +187,7 @@ for iter = 1:cfg.numrandomization+1
     % [~, rankSmoothL, ~, e2m_cache] = elec2map_build('L', cfg5, lh, sph_l, lh.pos, zeros(nVertL,1), sigma5_mm, true(nVertL,1), e2m_cache);
     % [~, rankSmoothR, ~, e2m_cache] = elec2map_build('R', cfg5, rh, sph_r, rh.pos, zeros(nVertR,1), sigma5_mm, true(nVertR,1), e2m_cache);
 
-    for s = 1:nSubjects
+    for s = 1:nSubjects  % this is a potential candidate for parfor looping... BG 
       data = varargin{s};
 
       % (d) Resampling: spectral surrogate in electrode space
