@@ -15,9 +15,9 @@ function stat = SMOOTHstat(cfg, varargin)
 %   cfg.parameter        = field with DV (default 'stat')
 %   cfg.smooth           = 'sphere' (default) | 'pial'
 %   cfg.kernel           = 'gaussian' (default) | 'boxcar'
-%   cfg.kernelwidth      = FWHM (gaussian) or radius (boxcar) in mm (default 20)
+%   cfg.kernelwidth      = FWHM (gaussian) or radius (boxcar) in mm (default 30)
 %   cfg.graphsigma       = Laplacian kernel σ for spectral surrogates in mm (default 20)
-%   cfg.rankrescale      = 'no' | 'quantile' | 'zscore'
+%   cfg.rankrescale      = 'no' | 'exact' (default) marginal distribution matching
 %   cfg.equalize_n       = 'no' | 'yes'  (downweight high coverage in t)
 %   cfg.normalize        = 'no' | 'yes'  (per-subject z before t)
 %   cfg.randmethod       = 'signflip' (default) | 'bandrotate'
@@ -41,9 +41,9 @@ cfg                  = ft_checkconfig(cfg, 'required', {'fshome'});
 cfg.parameter        = ft_getopt(cfg, 'parameter',         'stat');
 cfg.smooth           = ft_getopt(cfg, 'smooth',          'sphere');
 cfg.kernel           = ft_getopt(cfg, 'kernel',        'gaussian');
-cfg.kernelwidth      = ft_getopt(cfg, 'kernelwidth',           20); % ideally informed by our fwhm analysis
+cfg.kernelwidth      = ft_getopt(cfg, 'kernelwidth',           30); 
 cfg.graphsigma       = ft_getopt(cfg, 'graphsigma',            20);
-cfg.rankrescale      = ft_getopt(cfg, 'rankrescale',         'no');
+cfg.rankrescale      = ft_getopt(cfg, 'rankrescale',      'exact');
 cfg.equalize_n       = ft_getopt(cfg, 'equalize_n',          'no');
 cfg.normalize        = ft_getopt(cfg, 'normalize',           'no');
 cfg.randmethod       = ft_getopt(cfg, 'randmethod',    'signflip');
@@ -58,6 +58,7 @@ cfg.nsurrsamples     = ft_getopt(cfg, 'nsurrsamples',         100);
 % ---- Meshes (fsaverage) and adjacency (for clustering)
 lh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.pial'));
 rh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.pial'));
+nvtx    = length(lh.pos)  % resolution (varies depending on fs version)
 sph_l   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
 sph_r   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
 sph.pos = [sph_l.pos; sph_r.pos];
@@ -210,16 +211,12 @@ for iter = 1:cfg.numrandomization+1
       switch lower(cfg.rankrescale)
         case 'no'
         case 'exact'
-          [~, idxL] = sort(mapL); mapL(idxL) = sort(allmaps(1:163842,s));
-          [~, idxR] = sort(mapR); mapR(idxR) = sort(allmaps(163842+1:end,s));
-
-          % % 5 mm smoothing (sphere-based) after rank rescale
-          % mapL = elec2map_apply(rankSmoothL, mapL);
-          % mapR = elec2map_apply(rankSmoothR, mapR);
-        case 'quantile'
+          [~, idxL] = sort(mapL); mapL(idxL) = sort(allmaps(1:nvtx,s));
+          [~, idxR] = sort(mapR); mapR(idxR) = sort(allmaps(nvtx+1:end,s));
+        case 'quantile'  % unsupported 
           mapL = rescale_one_quantile(mapL, data.rescale_cache.L);
           mapR = rescale_one_quantile(mapR, data.rescale_cache.R);
-        case 'zscore'
+        case 'zscore'  % unsupported
           mapL = rescale_one_z(mapL, data.rescale_cache.L);
           mapR = rescale_one_z(mapR, data.rescale_cache.R);
         otherwise
