@@ -39,7 +39,7 @@ fprintf('\nLoaded demo dataset: %d subjects, %d total electrodes.\n', nsubs, nch
 %% 1,2) plot coverage
 
 % load native
-load([paths.figOut filesep 'natcortex.mat'])
+load([paths.figOut filesep 'natcortex.mat']) % What is this file? It's not created by this function or by the demo script. 
 load([paths.figOut filesep 'natchanpos.mat'])
 
 % plot native

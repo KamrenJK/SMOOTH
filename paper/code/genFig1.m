@@ -246,6 +246,6 @@ cfg.fsurfSubDir = fullfile(fshome,'subjects');
 cfg.view = hemi(1); % 'l' or 'r'
 cfg.parcellationColors = cmap(idx, :);
 
-plotPialSurf('fsaverage', cfg);
+plotPialSurf('fsaverage', cfg); % This function is not in SMOOTH or FieldTrip. Is this the iELVis toolbox? 
 end
 % -------------------------------------------------------------------------

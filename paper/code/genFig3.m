@@ -15,7 +15,7 @@ clear; clc; close all;
 paths.smooth      = '/LOCAL/PATH/TO/SMOOTH';        % UPDATE
 paths.fieldtrip   = '/LOCAL/PATH/TO/FIELDTRIP';     % UPDATE
 paths.freesurfer  = '/LOCAL/PATH/TO/FREESURFER';    % UPDATE
-paths.corrSource  = fullfile(paths.smooth, 'paper', 'figs','3','corrsource.mat');
+paths.corrSource  = fullfile(paths.smooth, 'paper', 'figs','3','corrsource.mat'); % this file also not created by this function or demo script. BG
 paths.figOut      = fullfile(paths.smooth, 'paper', 'figs', '3');
 
 % add paths
