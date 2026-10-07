@@ -1,0 +1,21 @@
+# MATLAB
+*.asv
+*.m~
+*.mex*
+slprj/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+._*
+
+# Generated figures (regenerate with paper/code/genFig*.m)
+paper/figs/
+demo/smoothdemo_nulldist.png
+
+# Scratch
+*.log
+tmp/

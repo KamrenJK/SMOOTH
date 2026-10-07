@@ -1,0 +1,39 @@
+cff-version: 1.2.0
+title: "SMOOTH: Surrogate Map-Based Group-Level Analysis of Human Intracranial EEG Data"
+message: "If you use this software, please cite both the software and the accompanying paper."
+type: software
+authors:
+  - given-names: "Kamren J."
+    family-names: "Khan"
+    email: "Kamren.Khan@PennMedicine.upenn.edu"
+    affiliation: "Department of Psychological and Brain Sciences, Dartmouth College; Medical Scientist Training Program, University of Pennsylvania"
+  - given-names: "Arjen"
+    family-names: "Stolk"
+    affiliation: "Department of Psychological and Brain Sciences, Dartmouth College"
+repository-code: "https://github.com/KamrenJK/SMOOTH"
+license: BSD-3-Clause
+version: "0.1.0"
+keywords:
+  - intracranial EEG
+  - iEEG
+  - ECoG
+  - sEEG
+  - group-level inference
+  - spatial autocorrelation
+  - surrogate data
+  - cluster-based permutation testing
+  - MATLAB
+
+preferred-citation:
+  type: article
+  title: "Surrogate Map-Based Group-Level Inference for Human Intracranial EEG"
+  authors:
+    - given-names: "Kamren J."
+      family-names: "Khan"
+    - given-names: "Benjamin"
+      family-names: "Graul"
+    - given-names: "Robert"
+      family-names: "Oostenveld"
+    - given-names: "Arjen"
+      family-names: "Stolk"
+  year: 2026
