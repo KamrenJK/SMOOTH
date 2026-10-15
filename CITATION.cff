@@ -16,6 +16,15 @@ authors:
 repository-code: "https://github.com/KamrenJK/SMOOTH"
 license: BSD-3-Clause
 version: "0.2.0"
+date-released: "2026-10-15"
+doi: 10.5281/zenodo.23383398
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23383398
+    description: "Archived snapshot of version 0.2.0 (Zenodo)"
+  - type: doi
+    value: 10.5281/zenodo.23383397
+    description: "Concept DOI for all versions (Zenodo)"
 keywords:
   - intracranial EEG
   - iEEG

@@ -274,8 +274,10 @@ protocols above.
 
 ## Citation
 
-If you use SMOOTH, please cite the manuscript and the software (see `CITATION.cff`). Changes between
-versions are listed in [CHANGELOG.md](CHANGELOG.md).
+If you use SMOOTH, please cite the manuscript and the software (see `CITATION.cff`). The software is
+archived on Zenodo: version 0.2.0 at https://doi.org/10.5281/zenodo.23383398, and every version at
+https://doi.org/10.5281/zenodo.23383397. Changes between versions are listed in
+[CHANGELOG.md](CHANGELOG.md).
 
 ## Third-party code
 
