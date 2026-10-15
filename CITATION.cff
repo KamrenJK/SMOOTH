@@ -7,12 +7,15 @@ authors:
     family-names: "Khan"
     email: "Kamren.Khan@PennMedicine.upenn.edu"
     affiliation: "Department of Psychological and Brain Sciences, Dartmouth College; Medical Scientist Training Program, University of Pennsylvania"
+  - given-names: "Benjamin"
+    family-names: "Graul"
+    affiliation: "Department of Psychological and Brain Sciences, Dartmouth College"
   - given-names: "Arjen"
     family-names: "Stolk"
     affiliation: "Department of Psychological and Brain Sciences, Dartmouth College"
 repository-code: "https://github.com/KamrenJK/SMOOTH"
 license: BSD-3-Clause
-version: "0.1.0"
+version: "0.2.0"
 keywords:
   - intracranial EEG
   - iEEG
@@ -32,8 +35,6 @@ preferred-citation:
       family-names: "Khan"
     - given-names: "Benjamin"
       family-names: "Graul"
-    - given-names: "Robert"
-      family-names: "Oostenveld"
     - given-names: "Arjen"
       family-names: "Stolk"
   year: 2026

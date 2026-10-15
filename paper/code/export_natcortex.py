@@ -8,16 +8,16 @@ corrsource <-> source was recovered by matching channel labels; source <-> recon
 recon that reproduces the stored `elec.dist2surf` -- which it does to 0.0000 mm, so the
 identification is verified rather than assumed.
 
-nibabel returns raw FreeSurfer coordinates; ft_read_headshape adds [1,1,1] and
-`corrsource{i}.elec.nativechanpos` lives in that FieldTrip frame, hence FT_OFF. The exact
-dist2surf agreement is what confirms the offset.
+Surfaces are used as stored (nibabel; the same frame as smooth_read_surf.m), as everywhere else in
+SMOOTH, and `elec.dist2surf` is in that frame too (export_dist2surf.py). The panel is a rendering only:
+contacts are snapped to the nearest vertex of this surface.
 
 The recon trees are not part of the published repository, so the surface is cached to a .mat the
 figure script loads directly.
 
 P19 (its demo/source.mat index) was chosen from the cohort's ECoG grid participants by rendering
 each candidate's native pial and comparing grid regularity and mesh quality; only P19 is exported.
-    P19  18 19  lh    43 TPJ  TG:112 AT:16 PST:16 AST:10
+    P19  18 19  lh    44 TPJ  TG:112 AT:16 PST:16 AST:10
 (columns: corrsource index, demo/source.mat index, hemisphere, n DK supramarginal/IP contacts, arrays)
 
 The raw-data subject ID that locates P19's recon under $SMOOTH_RAWDATA/data/ is not distributed; it
@@ -34,7 +34,7 @@ from scipy.spatial import cKDTree
 
 # pseudonym -> (corrsource index, demo/source.mat index, hemisphere, n DK TPJ contacts, arrays)
 SUBJECTS = {
-    "P19": (18, 19, "lh", 43, "TG:112 AT:16 PST:16 AST:10"),
+    "P19": (18, 19, "lh", 44, "TG:112 AT:16 PST:16 AST:10"),
 }
 
 HERE   = os.path.dirname(os.path.abspath(__file__))
@@ -43,7 +43,6 @@ if not os.environ.get("SMOOTH_RAWDATA"): sys.exit("Set SMOOTH_RAWDATA to the raw
 ROOT   = os.path.join(os.environ["SMOOTH_RAWDATA"], "data")
 if not os.environ.get("SMOOTH_RAWSUBJECT"): sys.exit("Set SMOOTH_RAWSUBJECT to P19's raw-data subject ID (not distributed).")
 RAWSUB = os.environ["SMOOTH_RAWSUBJECT"]                      # raw-tree folder name; outputs use "P19"
-FT_OFF = np.array([1.0, 1.0, 1.0])                            # nibabel -> FieldTrip frame
 
 h = h5py.File(os.path.join(DATA, "corrsource.mat"))
 refs = h["corrsource"][:, 0]
@@ -56,7 +55,7 @@ for sub in SUBJECTS:
     for hh in ("lh", "rh"):
         v, f = nib.freesurfer.read_geometry(os.path.join(recon, f"{hh}.pial"))
         c = nib.freesurfer.read_morph_data(os.path.join(recon, f"{hh}.curv")).astype(float)
-        pos.append(v + FT_OFF); tri.append(f + nv); curv.append(c); nv += len(v)
+        pos.append(v); tri.append(f + nv); curv.append(c); nv += len(v)
         if hh == "lh": nL = nv                                # lh occupies vertices 1..nL
     pos = np.vstack(pos); tri = np.vstack(tri); curv = np.concatenate(curv)
 

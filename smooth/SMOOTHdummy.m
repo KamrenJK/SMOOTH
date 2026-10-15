@@ -10,7 +10,7 @@ function stat = SMOOTHdummy(cfg, varargin)
 %   stat.stat, stat.prob, stat.mask, clusters (+ distributions), coverage, cfg
 %
 % Requirements: FreeSurfer fsaverage, FieldTrip
-% Authors: Kamren Khan & Arjen Stolk, v0.1
+% Authors: Kamren Khan & Arjen Stolk, v0.2.0
 
 
 % ---- Defaults
@@ -33,6 +33,10 @@ cfg.tail             = ft_getopt(cfg, 'tail',              'both');
 cfg.keepmaps         = ft_getopt(cfg, 'keepmaps',            'no');
 cfg.keepgroupsurrogates   = ft_getopt(cfg, 'keepgroupsurrogates',      'no');
 cfg.feedback         = ft_getopt(cfg, 'feedback',         'text');
+if ~any(strcmpi(cfg.tail, {'positive', 'negative', 'both'}))
+  error('SMOOTHdummy:badTail', ...
+    'cfg.tail must be ''positive'', ''negative'', or ''both'' (got ''%s'').', cfg.tail);
+end
 
 % ---- Reproducibility (see SMOOTHstat)
 if ~isempty(cfg.randomseed)
@@ -42,10 +46,10 @@ else
 end
 
 % ---- Meshes (fsaverage) and adjacency (for clustering)
-lh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.pial'));
-rh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.pial'));
-sph_l   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
-sph_r   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
+lh      = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.pial'));
+rh      = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.pial'));
+sph_l   = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
+sph_r   = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
 sph.pos = [sph_l.pos; sph_r.pos];
 sph.tri = [sph_l.tri; sph_r.tri + size(sph_l.pos,1)];
 i = [sph.tri(:,1); sph.tri(:,1); sph.tri(:,2); sph.tri(:,2); sph.tri(:,3); sph.tri(:,3)];
@@ -77,7 +81,7 @@ e2m_cache = struct('pial', struct('L', [], 'R', []), ...
 
 for s = 1:nSubjects
   data = varargin{s};
-  dv   = data.(cfg.parameter);
+  dv   = data.(cfg.parameter)(:);
   pos  = data.elec.chanpos;
   hemi = pos(:,1) < 0;  % fsavg: L<0
 
@@ -211,7 +215,7 @@ switch lower(cfg.smooth)
     if strcmpi(cfg.kernel,'gaussian')
       % σ in sphere units, support ~ 3σ
       sig_unit = mm2sphere(sigma_mm);
-      R        = 3*max(sig_unit, eps);  % CHANGED TO 2!!
+      R        = 3*max(sig_unit, eps);
       cand_all = rangesearch(kdt, surf_sph.pos(double(idx),:), R);
       for e=1:numel(idx)
         s    = double(idx(e));
@@ -238,16 +242,15 @@ switch lower(cfg.smooth)
       error('cfg.kernel must be ''gaussian'' or ''boxcar''.');
     end
 
-    % % COL
+    % column-normalized projector: each electrode spreads unit mass
     W   = sparse(I,J,Wvals,nVert,numel(idx));
     col = full(sum(W,1));
     C   = spdiags(1./max(col,eps)', 0, size(W,2), size(W,2));
     P   = W * C; 
 
-    % % ROW
+    % vertices with any electrode support
     den = full(sum(W,2));
     m   = den>0;
-    % P   = spdiags(1./max(den,eps),0,nVert,nVert) * W;
 
     % ====================== PIAL / GEODESIC (mm) ======================
     % Slower but more anatomically faithful. Uses geodesic distances on

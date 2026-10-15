@@ -30,8 +30,8 @@ savefigs = true;
 
 % cortical mesh (for visualization)
 cortex    = load_fsaverage_mesh(paths.freesurfer);
-cortex_lh = ft_read_headshape([paths.freesurfer filesep 'subjects' filesep 'fsaverage' filesep 'surf' filesep 'lh.pial']);
-cortex_rh = ft_read_headshape([paths.freesurfer filesep 'subjects' filesep 'fsaverage' filesep 'surf' filesep 'rh.pial']);
+cortex_lh = smooth_read_surf([paths.freesurfer filesep 'subjects' filesep 'fsaverage' filesep 'surf' filesep 'lh.pial']);
+cortex_rh = smooth_read_surf([paths.freesurfer filesep 'subjects' filesep 'fsaverage' filesep 'surf' filesep 'rh.pial']);
 
 % read in data
 load(paths.demoSource)  % path to example dataset
@@ -93,13 +93,14 @@ close(f)
 
 %% 4) modal decomp
 
-% geodesic distance matrix
+% geodesic distance matrix, in registration-sphere units exactly as SMOOTH builds it
+% (radius-100 sphere; 1.25 sphere units per mm), with SMOOTH's graph width cfg.graphsigma = 8 mm
 U     = pos./sqrt(sum(pos.^2, 2));  % unit vectors
-C     = U * U.';                    % cos(theta)                 
+C     = U * U.';                    % cos(theta)
 C     = max(-1, min(1, C));
-theta = acos(C);            
+theta = acos(C);
 D     = 100 * theta;
-sigma = 20;
+sigma = 1.25 * 8;
 W     = exp(-(D.^2) ./ (2*(sigma^2)));
 n     = length(W);
 W(1:n+1:end) = 0; % prevent self-loops
@@ -110,7 +111,7 @@ L     = (L + L')/2;  % normalized laplacian
 
 % visualize PDM
 f = figure('color',[1 1 1]);
-imagesc(D); colormap(viridis)
+imagesc(D / 1.25); colormap(viridis)              % shown in mm
 xlabel('chan'); ylabel('chan')
 cb = colorbar;
 cb.Label.String = 'geodesic distance (mm)';

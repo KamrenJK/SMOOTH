@@ -42,8 +42,8 @@ if ~isfield(cfg,'fshome') || ~ischar(cfg.fshome)
 end
 
 % Read fsaverage spheres & adjacency
-sph_l   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
-sph_r   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
+sph_l   = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
+sph_r   = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
 nVertL  = size(sph_l.pos,1);
 nVertR  = size(sph_r.pos,1);
 if (nVertL + nVertR) ~= Vtot

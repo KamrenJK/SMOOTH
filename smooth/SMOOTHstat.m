@@ -22,16 +22,27 @@ function stat = SMOOTHstat(cfg, varargin)
 %   cfg.kernel              = 'gaussian' (default) | 'boxcar'
 %   cfg.kernelwidth         = FWHM (gaussian) or radius (boxcar) in mm (default 12)
 %   cfg.graphsigma          = Laplacian kernel σ for spectral surrogates in mm (default 8)
-%   cfg.rankrescale         = 'no' (default) | 'exact' | 'quantile' | 'zscore'
-%                             marginal distribution matching of surrogates
+%   cfg.rankrescale         = 'exact' (default, recommended) | 'quantile' | 'zscore' | 'no'
+%                             marginal distribution matching of surrogates. 'exact' replaces
+%                             each surrogate's values rank for rank with the empirical values,
+%                             preserving the empirical marginal and spatial smoothness (the
+%                             validated setting); 'zscore' (mean/SD only) and 'no' may be less
+%                             effective; 'quantile' is the same rank matching on covered vertices
 %   cfg.equalize_n          = 'no' | 'yes'  (downweight high coverage in t)
 %   cfg.normalize           = 'no' | 'yes'  (per-subject z before t)
-%   cfg.randmethod          = 'signflip' (default) | 'bandrotate'
+%   cfg.randmethod          = 'signflip' (default; the only supported method) |
+%                             'bandrotate' (experimental, not validated)
 %   cfg.numrandomization    = permutations (default 1000)
 %   cfg.randomseed          = [] (default, nonreproducible) | integer | 'shuffle'
 %                             Seeds the RNG so surrogates -- and hence p-values --
 %                             are exactly reproducible. The seed actually used is
-%                             always returned in stat.cfg.randomseed.
+%                             always returned in stat.cfg.randomseed. (Exact
+%                             reproduction assumes the same numerical library:
+%                             when an electrode graph has several disconnected
+%                             parts, the basis of its zero-eigenvalue eigenspace
+%                             is not unique and can differ between LAPACK builds,
+%                             which changes individual surrogates but not their
+%                             distribution.)
 %   cfg.minnbsub            = mininum number of subjects per vertex (default 3)
 %   cfg.clusteralpha        = vertex-level cluster-FORMING α per tail (default 0.05).
 %                             Sets the threshold a vertex must exceed to join a
@@ -60,7 +71,7 @@ function stat = SMOOTHstat(cfg, varargin)
 %   cfg.keepmaps            = 'no' | 'yes' (default 'no')
 %   cfg.keepsubsurrogates   = 'no' | 'yes' (memory expensive, default 'no')
 %   cfg.keepgroupsurrogates = 'no' | 'yes' (memory expensive, default 'no')
-%   cfg.subsamplesurr       = 'no' | 'yes' (randomly sample 100 surrogates to keep to limit RAM demands, default 'yes')
+%   cfg.subsamplesurr       = 'no' | 'yes' (keep only the first cfg.nsurrsamples surrogates, to limit RAM demands, default 'yes')
 %   cfg.nsurrsamples        = how many surrogates to save (default 100);
 %   cfg.feedback            = 'text' (default) | 'no'  per-permutation progress
 %
@@ -77,7 +88,7 @@ function stat = SMOOTHstat(cfg, varargin)
 %   stat.cfg             = configuration actually used (incl. resolved randomseed)
 %
 % Requirements: FreeSurfer fsaverage, FieldTrip
-% Authors: Kamren Khan & Arjen Stolk, v0.1
+% Authors: Kamren Khan & Arjen Stolk, v0.2.0
 
 
 % ---- Defaults
@@ -87,7 +98,7 @@ cfg.smooth              = ft_getopt(cfg, 'smooth',          'sphere');
 cfg.kernel              = ft_getopt(cfg, 'kernel',        'gaussian');
 cfg.kernelwidth         = ft_getopt(cfg, 'kernelwidth',           12); % mm FWHM; informed by the HFB autocorrelation analysis
 cfg.graphsigma          = ft_getopt(cfg, 'graphsigma',             8); % mm
-cfg.rankrescale         = ft_getopt(cfg, 'rankrescale',         'no');
+cfg.rankrescale         = ft_getopt(cfg, 'rankrescale',      'exact');
 cfg.equalize_n          = ft_getopt(cfg, 'equalize_n',          'no');
 cfg.normalize           = ft_getopt(cfg, 'normalize',           'no');
 cfg.randmethod          = ft_getopt(cfg, 'randmethod',    'signflip');
@@ -140,7 +151,14 @@ else
 end
 
 % ---- Validate inputs before doing any expensive work
+if ~any(strcmpi(cfg.tail, {'positive', 'negative', 'both'}))
+  error('SMOOTHstat:badTail', ...
+    'cfg.tail must be ''positive'', ''negative'', or ''both'' (got ''%s'').', cfg.tail);
+end
 validate_sources(cfg, varargin{:});
+for s = 1:numel(varargin)   % accept row or column vectors
+  varargin{s}.(cfg.parameter) = varargin{s}.(cfg.parameter)(:);
+end
 
 % ---- A cache is only valid for the montage and geometry it was built from.
 % Reusing one across a different electrode set or smoothing kernel would silently
@@ -151,6 +169,11 @@ if ~isempty(cfg.cache)
       'cfg.cache has no signature field. Rebuild it with cfg.returncache=''yes''.');
   end
   sig = cfg.cache.signature;
+  if ~isfield(sig, 'reader') || ~strcmp(sig.reader, 'smooth_read_surf')
+    error('SMOOTHstat:badCache', ...
+      ['cfg.cache was built by an older SMOOTHstat, whose surfaces could be shifted by a ' ...
+       'read_surf.m on the MATLAB path. Rebuild it with cfg.returncache=''yes''.']);
+  end
   now_nchan = cellfun(@(d) numel(d.(cfg.parameter)), varargin(:)');
   chk = {'kernel',cfg.kernel; 'smooth',cfg.smooth};
   for c = 1:size(chk,1)
@@ -183,16 +206,18 @@ if usecache && isfield(cfg.cache, 'geom')
   sph   = g.sph;   adj   = g.adj;
   nvtx  = length(lh.pos);
 else
-  lh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.pial'));
-  rh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.pial'));
+  % read with SMOOTH's own reader, so that no read_surf.m on the path can alter the geometry
+  lh      = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.pial'));
+  rh      = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.pial'));
   nvtx    = length(lh.pos);  % resolution
-  sph_l   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
-  sph_r   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
+  sph_l   = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
+  sph_r   = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
   sph.pos = [sph_l.pos; sph_r.pos];
   sph.tri = [sph_l.tri; sph_r.tri + size(sph_l.pos,1)];
   i = [sph.tri(:,1); sph.tri(:,1); sph.tri(:,2); sph.tri(:,2); sph.tri(:,3); sph.tri(:,3)];
   j = [sph.tri(:,2); sph.tri(:,3); sph.tri(:,1); sph.tri(:,3); sph.tri(:,1); sph.tri(:,2)];
   adj = sparse(i,j,1,size(sph.pos,1),size(sph.pos,1)); adj = adj | adj'; % undirected
+  check_frame(lh, rh, varargin{:});
 end
 
 % -------------------------------------------------------------------------
@@ -288,7 +313,6 @@ for s = 1:nSubjects
   y                = data.(cfg.parameter);
   y                = [y(data.elec.hemi); y(~data.elec.hemi)];  % reorder;
   data.modes       = Q;                         % elecs x modes
-  % data.modalcoeffs = Q' * data.(cfg.parameter); % modal coefficients
   data.modalcoeffs = Q' * y;
   data.eigvals     = lam;                       % eigenvalues
   data.B           = data.modes * spdiags(data.modalcoeffs,0,length(data.modalcoeffs),length(data.modalcoeffs));
@@ -447,7 +471,8 @@ if strcmp(cfg.returncache, 'yes')
   % different smoothing geometry: both would invalidate the projectors.
   cache.signature = struct('kernel',cfg.kernel,'kernelwidth',cfg.kernelwidth, ...
     'graphsigma',cfg.graphsigma,'smooth',cfg.smooth,'nSubjects',nSubjects, ...
-    'nchan',cellfun(@(d) numel(d.(cfg.parameter)), varargin(:)'));
+    'nchan',cellfun(@(d) numel(d.(cfg.parameter)), varargin(:)'), ...
+    'reader','smooth_read_surf');
   stat.cache = cache;
 end
 if strcmp(cfg.keepmaps, 'yes')
@@ -536,6 +561,45 @@ if max(abs(rng_all)) > 200 || max(abs(rng_all)) < 20
     rng_all(1), rng_all(2));
 end
 
+function check_frame(lh, rh, varargin)
+% Warn when electrodes sit on the fsaverage pial surface displaced by +[1 1 1] mm
+% rather than on the surface itself: the signature of electrode coordinates made
+% with a read_surf.m that adds 1 to every vertex (e.g. the copy shipped with iELVis).
+% The +[1 1 1] copy must also be much closer than copies shifted by the other seven
+% sign combinations of [+-1 +-1 +-1], so that electrodes merely floating a millimetre
+% or two off the surface, depth contacts and unprojected coordinates are not flagged.
+kdt = {createns(lh.pos, 'NSMethod','kdtree'), createns(rh.pos, 'NSMethod','kdtree')};
+shifts = [1 1 1; 2*(dec2bin(0:6) - '0') - 1];   % +[1 1 1] first, then the seven controls
+bad = []; dsurf = []; dshift = [];
+for s = 1:numel(varargin)
+  pos  = varargin{s}.elec.chanpos;
+  left = pos(:,1) < 0;
+  d = cell(1, 9);
+  for h = 1:2
+    sel = left == (h == 1);
+    if ~any(sel), continue, end
+    [~, a] = knnsearch(kdt{h}, pos(sel,:));
+    d{1} = [d{1}; a];
+    for k = 1:8                                    % distance to the surface moved by shifts(k,:)
+      [~, b] = knnsearch(kdt{h}, pos(sel,:) - shifts(k,:));
+      d{k+1} = [d{k+1}; b];
+    end
+  end
+  m = cellfun(@median, d);
+  if m(1) > 0.5 && m(2) < 0.5*min([m(1) m(3:end)])
+    bad(end+1) = s; dsurf(end+1) = m(1); dshift(end+1) = m(2); %#ok<AGROW>
+  end
+end
+if ~isempty(bad)
+  warning('SMOOTHstat:shiftedFrame', ...
+    ['Electrodes of %d subject(s) (%s) lie on the fsaverage pial surface shifted by +[1 1 1] mm ' ...
+     '(median distance %.2f mm) rather than on the surface itself (%.2f mm). This happens when ' ...
+     'electrodes are localized with a read_surf.m that adds 1 to every vertex coordinate, such as ' ...
+     'the copy shipped with iELVis. Check how the coordinates were made; if this is the cause, ' ...
+     'subtract 1 from elec.chanpos or re-localize with an unmodified reader.'], ...
+    numel(bad), num2str(bad), median(dshift), median(dsurf));
+end
+
 function [map, hemi_cache, idx, e2m_cache] = elec2map_build(side, cfg, surf_pial, surf_sph, pos_all, dv_all, sigma_mm, hemi_mask, e2m_cache)
 % Per-hemisphere projector build + single apply, caching heavy aux in e2m_cache.
 % side      : 'L' or 'R'
@@ -607,16 +671,15 @@ switch lower(cfg.smooth)
       error('cfg.kernel must be ''gaussian'' or ''boxcar''.');
     end
 
-    % % COL
+    % column-normalized projector: each electrode spreads unit mass
     W   = sparse(I,J,Wvals,nVert,numel(idx));
     col = full(sum(W,1));
     C   = spdiags(1./max(col,eps)', 0, size(W,2), size(W,2));
     P   = W * C; 
 
-    % % ROW
+    % vertices with any electrode support
     den = full(sum(W,2));
     m   = den>0;
-    % P   = spdiags(1./max(den,eps),0,nVert,nVert) * W;
 
     % ====================== PIAL / GEODESIC (mm) ======================
     % Slower but more anatomically faithful. Uses geodesic distances on

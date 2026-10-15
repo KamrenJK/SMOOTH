@@ -1,0 +1,4 @@
+# pipeline outputs (eigenmode caches, partial results, figures) and cluster artifacts
+out/
+logs/
+*.sif

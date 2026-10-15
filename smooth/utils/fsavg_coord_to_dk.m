@@ -7,14 +7,14 @@ function [roi_name, roi_index, hemi, vert_idx] = fsavg_coord_to_dk(pos_mm, fshom
 %   fshome  : path to FreeSurfer home (string), e.g., '/usr/local/freesurfer'
 %
 % Outputs
-%   roi_name : N x 1 cell array of DK ROI names (now prefixed with 'lh-' or 'rh-')  %% NEW
+%   roi_name : N x 1 cell array of DK ROI names (prefixed with 'lh-' or 'rh-')
 %   roi_index: N x 1 double; index into the colortable.struct_names for the chosen hemi
 %              (NaN if unknown)
 %   hemi     : N x 1 char; 'L' or 'R' for the hemisphere used
 %   vert_idx : N x 1 int32; vertex index on the chosen pial surface
 %
 % Requirements
-%   - FieldTrip (for ft_read_headshape) or you can replace with freesurfer_read_surf, etc.
+%   - smooth_read_surf (SMOOTH's own surface reader, in this folder)
 %   - FreeSurfer MATLAB tools on the path (for read_annotation.m):
 %       addpath(fullfile(getenv('FREESURFER_HOME'),'matlab'))
 %
@@ -49,8 +49,8 @@ function [roi_name, roi_index, hemi, vert_idx] = fsavg_coord_to_dk(pos_mm, fshom
   persistent L_pial R_pial kdtL kdtR L_annot L_ctab R_annot R_ctab
   if isempty(L_pial) || isempty(R_pial)
     % Load pial meshes (mm)
-    L_pial = ft_read_headshape(fullfile(fsavg,'surf','lh.pial'));
-    R_pial = ft_read_headshape(fullfile(fsavg,'surf','rh.pial'));
+    L_pial = smooth_read_surf(fullfile(fsavg,'surf','lh.pial'));
+    R_pial = smooth_read_surf(fullfile(fsavg,'surf','rh.pial'));
 
     % KD-trees for nearest-vertex search
     kdtL   = createns(L_pial.pos, 'NSMethod','kdtree');

@@ -8,17 +8,18 @@ function genFigS3
 %   row 3  FWER vs rho  and  FWER vs q, SMOOTH vs naive shuffle, y in [0 1], 95% binomial CI
 % Exemplar fields are illustrative single draws at a fixed spectral slope (so the panels differ only
 % in anisotropy/nonstationarity) -- NOT the realizations behind the FWER curves; the caption states
-% this. The anisotropy row uses beta = 8 on the 1500-mode anisotropic bases, verified to reproduce the
-% simulated fields' own spatial autocorrelation at every rho (within ~0.02 electrode-level Moran's I).
-% The nonstationarity row uses beta = 29 on the 5000-mode isotropic basis -- the simulations' actual
-% condition -- confirmed to match their recorded autocorrelation to ~0.01 across q (at beta = 8 / 1500
-% modes this row would be measurably too rough: 15.6mm vs. the simulations' 18.8mm correlation
-% half-decay).
+% this. The FWER sweeps themselves were run on 1500-mode eigenbases (simulations/robustness/):
+% anisotropy at beta = 8 on the warped anisotropic bases, nonstationarity at beta = 10 on the isotropic
+% basis. The anisotropy row uses the sweep's own setting (beta = 8, 1500-mode anisotropic bases), which
+% reproduces the simulated fields' spatial autocorrelation at every rho (within ~0.02 electrode-level
+% Moran's I). The nonstationarity row is drawn at beta = 29 on the 5000-mode isotropic basis, which
+% reproduces the sweep's recorded autocorrelation to ~0.01 across q.
 %
 % FWER panels are reported at one-tailed p <= 0.05, matching the main FWER figure's convention.
 %
 % Nugget condition: a = 1.0 (no nugget, the adversarial pure-1/f case).
-% Data: paper/data/anisononstat_fig_data_v3.mat (produced by a separate simulation pipeline, not distributed).
+% Data: paper/data/anisononstat_fig_data_v3.mat (simulations/code/viz/export_anisononstat_v3.py, from the
+% sweeps in paper/data/anisononstat/).
 % Run WITH a display. Panels -> paper/figs/S3/*
 % ------------------------------------------------------------------------------------------------
 set(0,'DefaultFigureVisible','on');

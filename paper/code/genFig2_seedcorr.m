@@ -18,8 +18,8 @@ function genFig2_seedcorr(sub, seedlabel, climoverride)
 % SUBJECT.  P19 (pseudonym = its demo/source.mat index; corrsource 18), left hemisphere, 154 ECoG
 % contacts. P19 was chosen from the cohort's ECoG grid participants for having the cleanest 8 x 8
 % grid (its TG array: 112 bipolar channels spanning 85 x 82 mm of temporal-parietal cortex) and a
-% pial mesh that is undistorted over that territory. Its frontal lobe renders smooth/under-gyrified,
-% so crop the panel to the posterior two-thirds. Only P19's native surface is distributed.
+% pial mesh that is undistorted over that territory. The surface reconstruction is less accurate over
+% frontal cortex, so crop the panel to the posterior two-thirds. Only P19's native surface is distributed.
 % corrsource, demo/source.mat and the FreeSurfer recons use three different subject orderings; see
 % export_natcortex.py for how the mapping was recovered and verified (recomputed dist2surf matches
 % the stored values to 0.0000 mm).

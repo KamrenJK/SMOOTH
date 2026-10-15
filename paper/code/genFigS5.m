@@ -8,8 +8,8 @@ function genFigS5
 %   b) brainmaps (SMOOTH / DK-FDR / Schaefer-300-FDR)
 %   c) pairwise 2D histograms with "more sensitive" percentages (as in genFig4.m's hist2pair)
 % Data: paper/data/benchmark_fig_data_fdr.mat (same field layout as benchmark_fig_data.mat; built by
-% a one-off Python export from a separate simulation pipeline, not distributed: full 14,075-vertex
-% FDR sweep, niter=1000, noise=1f beta=29 a=0.53).
+% simulations/code/viz/export_benchmark_fdr_mat.py from the full 14,075-vertex FDR sweep in
+% simulations/: niter=1000, noise=1f beta=29 a=0.53).
 % Run WITH a display. Panels -> paper/figs/S5/*.pdf
 % ------------------------------------------------------------------------------------------------
 clear; clc; close all;

@@ -6,7 +6,7 @@ function genFigS4
 % sensitivity map, plus a panel showing the 1/f-GRF fit to the empirical spatial autocorrelation.
 %
 % The noise panels and the rho(d) fit panel use the 1/f model (a, beta). Data: paper/data/methods_fig_data.mat
-% (produced by the same separate simulation pipeline as the 1/f sims, not distributed). Plotting is genFig-style:
+% (produced by simulations/code/viz/export_methods_fig_data.py). Plotting is genFig-style:
 % ft_plot_mesh(...,'vertexcolor','curv') backdrop + overlay + colormap + clim + view -- NO camlight.
 % Run WITH a display. Panels -> paper/figs/S4/*.pdf (named by view for easy assembly).
 % ------------------------------------------------------------------------------------------------

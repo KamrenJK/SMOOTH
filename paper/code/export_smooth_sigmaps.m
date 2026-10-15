@@ -32,11 +32,10 @@ paths = smooth_setup('quiet');
 %
 % CLUSTER-FORMING THRESHOLD IS PER-DATASET and is stated explicitly here rather than left to the
 % SMOOTHstat default, because it is not uniform across datasets and a silent default would
-% misreproduce Figure 5. Berezutskaya uses 0.01 (z=2.33): at the 0.05 default the whole left
-% temporal-frontal territory merges into ONE 12,691-vertex cluster (p=0.001), whereas 0.01 resolves
-% the three anatomically distinct clusters the manuscript reports (all p=0.001; lh superior/middle
-% temporal, lh precentral/parsopercularis, rh insula), from a sweep of the threshold over
-% 0.010 / 0.025 / 0.050 / 0.100.
+% misreproduce Figure 5. Berezutskaya uses 0.01 (z=2.33), the threshold the manuscript reports for
+% this dataset (clusters p = 0.001, 0.002, 0.008: lh superior/middle temporal, lh precentral/pars
+% opercularis, rh insula). The same three territories are already separate clusters at 0.05
+% (13,110 / 7,220 / 1,908 vertices).
 DS = { 'socialcog',    fullfile(paths.demo,'source.mat'),              0.05;
        'berezutskaya', fullfile(paths.data,'source_berezutskaya.mat'), 0.01;
        'cogitate',     fullfile(paths.data,'source_cogitate.mat'),     0.05 };
@@ -44,16 +43,16 @@ DS = { 'socialcog',    fullfile(paths.demo,'source.mat'),              0.05;
 M   = load(fullfile(paths.data,'methodscomparison_pvals.mat'), 'fs5_pos', 'nL');
 fs5 = double(M.fs5_pos); nL5 = double(M.nL);
 
-lh = ft_read_headshape(fullfile(paths.freesurfer,'subjects','fsaverage','surf','lh.pial'));
-rh = ft_read_headshape(fullfile(paths.freesurfer,'subjects','fsaverage','surf','rh.pial'));
+lh = smooth_read_surf(fullfile(paths.freesurfer,'subjects','fsaverage','surf','lh.pial'));
+rh = smooth_read_surf(fullfile(paths.freesurfer,'subjects','fsaverage','surf','rh.pial'));
 nLf = size(lh.pos,1);
 map = [(1:nL5)'; nLf + (1:nL5)'];          % index correspondence, per hemisphere
 
 % sanity-check the correspondence rather than trusting it: fsaverage5's own pial at vertex i should
 % be ~1 mm from fsaverage's pial at vertex i (same anatomical vertex, different reconstruction).
 % A wrong correspondence would show tens of mm.
-lh5 = ft_read_headshape(fullfile(paths.freesurfer,'subjects','fsaverage5','surf','lh.pial'));
-rh5 = ft_read_headshape(fullfile(paths.freesurfer,'subjects','fsaverage5','surf','rh.pial'));
+lh5 = smooth_read_surf(fullfile(paths.freesurfer,'subjects','fsaverage5','surf','lh.pial'));
+rh5 = smooth_read_surf(fullfile(paths.freesurfer,'subjects','fsaverage5','surf','rh.pial'));
 dIdx = [sqrt(sum((double(lh.pos(1:nL5,:)) - double(lh5.pos)).^2, 2)); ...
         sqrt(sum((double(rh.pos(1:nL5,:)) - double(rh5.pos)).^2, 2))];
 fprintf('fs5 <- fsaverage index map: pial offset mean %.3g mm, max %.3g mm (expect ~1 / ~6)\n', ...

@@ -7,6 +7,10 @@ function genFig2_surrogates
 %   f) Group-level empirical vs. surrogate Moran's I (paired half-violin; the distributions do not
 %      differ -- this is the correct plot for that claim, not a scatter -- see genFig2.m for panel b
 %      and genFig2_seedcorr.m for panel a)
+%
+% MEMORY: this script reruns SMOOTHsub and SMOOTHstat and keeps every participant's 500 surrogate
+% maps in memory (38 x 327,684 x 500 doubles, about 46 GB, plus about 1 GB of group surrogates), so
+% it needs a machine with roughly 48 GB of RAM or more. Panel f uses only the first 100 surrogates.
 % -------------------------------------------------------------------------
 
 %% config
@@ -25,10 +29,9 @@ if ~isfolder(paths.figOut), mkdir(paths.figOut); end
 % set savefigs = false to render without writing PDFs to paths.figOut
 savefigs = true;
 
-% cortical mesh (for visualization)
-cortex = load_fsaverage_mesh(paths.freesurfer);
-cortex_lh   = ft_read_headshape([paths.freesurfer filesep 'subjects' filesep 'fsaverage' filesep 'surf' filesep 'lh.pial']);
-cortex_rh   = ft_read_headshape([paths.freesurfer filesep 'subjects' filesep 'fsaverage' filesep 'surf' filesep 'rh.pial']);
+% cortical meshes (for visualization)
+cortex_lh   = smooth_read_surf([paths.freesurfer filesep 'subjects' filesep 'fsaverage' filesep 'surf' filesep 'lh.pial']);
+cortex_rh   = smooth_read_surf([paths.freesurfer filesep 'subjects' filesep 'fsaverage' filesep 'surf' filesep 'rh.pial']);
 
 % read in data
 load(paths.demoSource)  % path to example dataset
@@ -51,39 +54,23 @@ cfg.graphsigma       = 8;
 cfg.rankrescale      = 'exact';
 cfg.smooth           = 'sphere';
 cfg.kernel           = 'gaussian';
+cfg.randomseed       = 42;
 stat = SMOOTHsub(cfg, source{10});
 
-%% plot empirical cortical map
+%% plot empirical and surrogate cortical maps (right hemisphere)
+% Brain panels are saved as transparent PNGs (savepanel); covered vertices are drawn as their own
+% surface over the curvature-shaded cortex, so uncovered (NaN) vertices leave no artefacts.
 
-f  = figure('color',[1 1 1],'units','centimeters','Position',[0 0 15 15]); hold on
-
-% colormap
+nVL      = size(cortex_lh.pos,1);
 blue     = slanCM('Blues');
 orange   = slanCM('Oranges');
+VW       = [90 0];
 
-% plot channels
-ft_plot_mesh(cortex, 'vertexcolor', 'curv');
-hold on; ft_plot_mesh(cortex, 'vertexcolor', stat.maps);
-clim([-0.04 0.04])
-colormap(blue)
-view([90 0])
+overlay(cortex_rh, stat.maps(nVL+1:end), [-0.04 0.04], blue, VW);
+if savefigs, savepanel(paths.figOut, 'empiricalmap'); else, close(gcf); end
 
-if savefigs, exportgraphics(f,[paths.figOut filesep 'empiricalmap.pdf'],'ContentType','auto','Resolution',600); end
-close(f)
-
-%% plot surrogate cortical map
-
-f  = figure('color',[1 1 1],'units','centimeters','Position',[0 0 15 15]); hold on
-
-% plot channels
-ft_plot_mesh(cortex, 'vertexcolor', 'curv');
-hold on; ft_plot_mesh(cortex, 'vertexcolor', stat.surrogate_subject(:,1));
-clim([-0.04 0.04])
-colormap(orange)
-view([90 0])
-
-if savefigs, exportgraphics(f,[paths.figOut filesep 'surrmap.pdf'],'ContentType','auto','Resolution',600); end
-close(f)
+overlay(cortex_rh, stat.surrogate_subject(nVL+1:end,1), [-0.04 0.04], orange, VW);
+if savefigs, savepanel(paths.figOut, 'surrmap'); else, close(gcf); end
 
 %% modal power spectrum (RH only)
 
@@ -116,55 +103,31 @@ grid on
 if savefigs, exportgraphics(f,[paths.figOut filesep 'surrcoeffs.pdf'],'ContentType','vector'); end
 close(f)
 
-%% plot original y
+%% plot original y (right-hemisphere channels)
 
-% reconstruct
-y = source{10}.stat;
-
-% channel coords (snap to mesh)
-chanXYZ = source{10}.elec.chanpos;
-D = pdist2(cortex.pos,chanXYZ);
-[~, idx] = min(D,[],1);
-fssurfxyz = cortex.pos(idx,:);
-fssurfxyz(stat.data.elec.hemi,:) = [];
-
-% plot (RH)
-f  = figure('color',[1 1 1],'units','centimeters','Position',[0 0 15 15]); hold on
-ft_plot_mesh(cortex_rh,'vertexcolor','curv')
-ft_plot_cloud(fssurfxyz, y(~stat.data.elec.hemi), 'cloudtype', 'surf', ...
-  'radius', 2, 'scalerad', 'no', 'colormap', blue, 'clim', [-10 10]); 
-view([90 0])
-
-if savefigs, exportgraphics(f,[paths.figOut filesep 'empberries.pdf'],'ContentType','auto','Resolution',600); end
-close(f)
+y      = source{10}.stat;
+rhpos  = source{10}.elec.chanpos(~stat.data.elec.hemi,:);
+berry(cortex_rh, rhpos, y(~stat.data.elec.hemi), [-10 10], blue, VW);
+if savefigs, savepanel(paths.figOut, 'empberries'); else, close(gcf); end
 
 %% plot reconstructed y
 
-% reconstruct
 % y_recon = stat.data.modes*(stat.data.modalcoeffs);  % SANITY CHECK
 y_recon = stat.data.modes*(stat.data.modalcoeffs.*stat.data.sflipmat(:,1));
 y_recon = y_recon(nL+1:end);
-
-% plot
-f  = figure('color',[1 1 1],'units','centimeters','Position',[0 0 15 15]); hold on
-ft_plot_mesh(cortex_rh,'vertexcolor','curv')
-ft_plot_cloud(fssurfxyz, y_recon, 'cloudtype', 'surf', ...
-  'radius', 2, 'scalerad', 'no', 'colormap', orange, 'clim', [-10 10]); 
-view([90 0])
-
-if savefigs, exportgraphics(f,[paths.figOut filesep 'surrberries.pdf'],'ContentType','auto','Resolution',600); end
-close(f)
+berry(cortex_rh, rhpos, y_recon, [-10 10], orange, VW);
+if savefigs, savepanel(paths.figOut, 'surrberries'); else, close(gcf); end
 
 %% compute spatial stats on surrogates
 
-% empirical
-surfmap = stat.maps(end/2:end);
+% empirical (right hemisphere: vertices nVL+1..end)
+surfmap = stat.maps(nVL+1:end);
 cvg     = isnan(surfmap);
 % surfmap(cvg) = [];
 
 % downsample mesh for easy variogram calculation
-reg_rh            = ft_read_headshape(fullfile(paths.freesurfer,'subjects','fsaverage','surf','rh.sphere.reg'));
-mesh_patch        = struct('vertices', reg_rh.pos, 'faces', reg_rh.tri);  % LH only
+reg_rh            = smooth_read_surf(fullfile(paths.freesurfer,'subjects','fsaverage','surf','rh.sphere.reg'));
+mesh_patch        = struct('vertices', reg_rh.pos, 'faces', reg_rh.tri);  % RH only
 reduction_factor  = 0.025;
 [tri_ds, pos_ds]  = reducepatch(mesh_patch, reduction_factor);
 reg_ds.tri        = tri_ds;
@@ -191,9 +154,9 @@ mapcorr       = nan(nperms,1);
 
 for i = 1:nperms + 1
     if i <= nperms  % surrogate
-        surfmapi = stat.surrogate_subject(end/2:end,i);
+        surfmapi = stat.surrogate_subject(nVL+1:end,i);
     else  % empirical
-        surfmapi = stat.maps(end/2:end);
+        surfmapi = stat.maps(nVL+1:end);
     end
     dssurfmapi = surfmapi(dsidx);  % downsample
     dssurfmapi(dscvg) = [];        % trim nans
@@ -216,7 +179,7 @@ mu    = nanmean(semivar(:,1:end-1),2);
 sigma = nanstd(semivar(:,1:end-1),0,2);
 lo    = (mu-sigma)';
 hi    = (mu+sigma)';
-x     = vi:(vf-vi)/20:vf;
+x     = (vi:(vf-vi)/20:vf) / 1.25;   % variogram lags are registration-sphere units; 1.25 per mm
 
 % variogram 
 f = figure('color',[1 1 1]);
@@ -253,6 +216,7 @@ cfg.kernelwidth      = 12;
 cfg.rankrescale      = 'exact';
 cfg.smooth           = 'sphere';
 cfg.kernel           = 'gaussian';
+cfg.randomseed       = 42;
 stat = SMOOTHstat(cfg, source{:});
 d = SMOOTHdiag(stat);
 
@@ -289,6 +253,32 @@ if savefigs, exportgraphics(f,[paths.figOut filesep 'grouplevel.pdf'],'ContentTy
 close(f)
 
 %% subfunctions
+function overlay(c, field, cl, cmap, vw)
+% covered vertices drawn as their own surface over the curvature-shaded cortex (as in genFig1)
+field = field(:); figure('color','w','position',[100 100 520 470]); axes('Position',[0.02 0.04 0.96 0.9]);
+ft_plot_mesh(c,'vertexcolor','curv','edgecolor','none'); hold on;
+k = isfinite(field);
+if any(k), vm=zeros(size(c.pos,1),1); vm(k)=1:nnz(k); fk=all(k(c.tri),2);
+  s.pos=c.pos(k,:); s.tri=vm(c.tri(fk,:)); ft_plot_mesh(s,'vertexcolor',field(k),'edgecolor','none'); end
+colormap(cmap); clim(cl); view(vw); axis off;
+
+function berry(c, elec, dv, cl, cmap, vw)
+% channel values as spheres at each electrode's nearest vertex of mesh c (as in genFig1)
+idx = knnsearch(c.pos, elec); e = c.pos(idx,:);
+figure('color','w','position',[100 100 520 470]); axes('Position',[0.02 0.04 0.96 0.9]);
+ft_plot_mesh(c,'vertexcolor','curv','edgecolor','none'); hold on;
+ft_plot_cloud(e, dv(:), 'cloudtype','surf','radius',2,'scalerad','no','colormap',cmap,'clim',cl);
+view(vw); axis off;
+
+function savepanel(outdir,name)
+% transparent PNG by two-background compositing (exportgraphics drops the alpha channel here)
+fw=fullfile(outdir,[name '_w.png']); fk=fullfile(outdir,[name '_k.png']);
+set(gcf,'InvertHardcopy','off','PaperPositionMode','auto'); set(findall(gcf,'type','axes'),'Color','none');
+set(gcf,'Color','w'); print(gcf,fw,'-dpng','-r300'); set(gcf,'Color','k'); print(gcf,fk,'-dpng','-r300'); close(gcf);
+W=double(imread(fw)); K=double(imread(fk)); alpha=min(max(1-mean(W-K,3)/255,0),1); C=min(max(K./max(alpha,1e-3),0),255);
+[rr,cc]=find(alpha>0.02); if ~isempty(rr), r=min(rr):max(rr); c2=min(cc):max(cc); C=C(r,c2,:); alpha=alpha(r,c2); end
+imwrite(uint8(C),fullfile(outdir,[name '.png']),'Alpha',alpha); delete(fw); delete(fk);
+
 function B = surfacegauss(A,D,Idx,sigma)
 % A = original map, D = Distances of nearest points to query points, Idx =
 % Indices of nearest points (from rangesearch for mem efficiency)

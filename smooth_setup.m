@@ -19,6 +19,7 @@ function paths = smooth_setup(varargin)
 %
 % Requirements:
 %   MATLAB    R2022a or newer (tested on R2024b), Statistics and Machine Learning Toolbox
+%             (paper figures also use the Optimization and Curve Fitting Toolboxes)
 %   FieldTrip 20220000 or newer  -- https://www.fieldtriptoolbox.org
 %   FreeSurfer 7.x with fsaverage and fsaverage5 subjects installed
 
@@ -66,6 +67,7 @@ addpath(genpath(paths.core));
 addpath(genpath(fullfile(paths.root, 'external')));
 addpath(paths.fieldtrip);
 evalc('ft_defaults');   % suppress FieldTrip's banner
+evalc('ft_hastoolbox(''matplotlib'', 1);');   % perceptually uniform colormaps (e.g. magma) used by the figure scripts
 
 if ~quiet
   fprintf('SMOOTH configured\n');

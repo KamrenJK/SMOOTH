@@ -3,8 +3,8 @@ function genFig3
 % Figure 3. SMOOTH controls false positives under spatial autocorrelation.
 %
 % Consumes the 1/f-GRF cluster FWER results: one `results` .mat per beta in
-% paper/data/fwer_sims_1f/, produced by a separate simulation pipeline (not distributed); this
-% script reads its cached output.
+% paper/data/fwer_sims_1f/, produced by the simulation pipeline in simulations/ (simulation/fwer.py,
+% viz/export_fwer_mat.py); this script reads its cached output.
 %   - exemplars selected by beta VALUE = [1 29 50]
 %   - linear beta axis, xlim [0 50] (log-spaced grid 1..50, incl. the empirical beta=29)
 %   - FWER-vs-beta uses the stored per-beta counts (all betas) with a binomial CI, so only
@@ -32,8 +32,8 @@ DISTBW    = 25;            % ... bin width
 rng(0);
 
 % meshes
-lh    = ft_read_headshape(fullfile(paths.freesurfer,'subjects','fsaverage5','surf','lh.pial'));
-sph_l = ft_read_headshape(fullfile(paths.freesurfer,'subjects','fsaverage5','surf','lh.sphere.reg'));
+lh    = smooth_read_surf(fullfile(paths.freesurfer,'subjects','fsaverage5','surf','lh.pial'));
+sph_l = smooth_read_surf(fullfile(paths.freesurfer,'subjects','fsaverage5','surf','lh.sphere.reg'));
 
 %% ---- read per-beta results (paper/data/fwer_sims_1f/*beta_<b>_*.mat) ----
 d = dir(fullfile(paths.simData, '*.mat'));

@@ -16,9 +16,11 @@ in demo/SMOOTHdemo.m, which is written for general/exploratory use. With a direc
 one-tailed is the correct and more powerful choice; with no prior hypothesis about direction, prefer
 SMOOTHdemo.m's two-tailed default.
 
-Expect two significant clusters, matching Figure 5a/d of the manuscript:
-    pMTG   p = 0.001
-    rTPJ   p = 0.009  (permutation-based, so this can read ~0.008-0.011 depending on the random draw)
+Expect two significant clusters, matching Figure 5a/d of the manuscript (same cluster masses as MATLAB):
+    pMTG   mass 4328.3   p = 0.002 in MATLAB
+    rTPJ   mass 2838.0   p = 0.012 in MATLAB
+(p-values are permutation-based; Python draws its own permutations, so they read slightly differently,
+e.g. 0.001 and 0.008 with seed 42)
 
 Requirements: numpy, scipy (see ../python/requirements.txt) and a FreeSurfer installation (for the
 fsaverage surfaces -- point SUBJECTS_DIR or FREESURFER_HOME at it; no FreeSurfer processing is run,
@@ -67,7 +69,7 @@ def main():
     for m, p, mem in sig:
         print(f"   p = {p:.4f}   mass = {m:.1f}   n_vertices = {len(mem)}")
     if not args.quick:
-        print("\nCompare with the manuscript (Figure 5a,d): pMTG p=0.001, rTPJ p=0.009.")
+        print("\nCompare with the manuscript (Figure 5a,d): pMTG mass 4328.3, p=0.002; rTPJ mass 2838.0, p=0.012 (MATLAB).")
 
     # ---------------------------------------------------------------- null-distribution plot
     try:

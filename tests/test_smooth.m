@@ -90,11 +90,28 @@ fprintf('\ncompatibility\n');
 check('honours deprecated cfg.keepsurrogates', @() assertFields( ...
     runlegacy(FS, source), {'surrogate_subject','surrogate_group'}));
 
+%% --- surface geometry
+% A read_surf.m that adds 1 mm to every vertex (as the copy in iELVis does) silently moves the
+% cortex relative to the electrodes when it precedes FieldTrip's copy on the path.
+fprintf('\nsurface geometry\n');
+
+check('surfaces do not depend on read_surf.m on the path', @() assertPathIndependent(FS));
+
+check('SMOOTHstat results do not depend on read_surf.m on the path', @() assertStatPathIndependent(FS, source(1:5)));
+
+check('warns when electrodes sit on a +1 mm shifted surface', @() assertWarning( ...
+    @() runquiet(FS, shift(source(1:5), 1)), 'SMOOTHstat:shiftedFrame', true));
+
+check('does not warn for the demo electrodes', @() assertWarning( ...
+    @() runquiet(FS, source(1:5)), 'SMOOTHstat:shiftedFrame', false));
+
+check('does not warn for electrodes 1.5 mm off the surface', @() assertWarning( ...
+    @() runquiet(FS, offsurface(FS, source(1:10), 1.5)), 'SMOOTHstat:shiftedFrame', false));
+
 %% --- cross-file consistency
 % SMOOTHstat, SMOOTHsub and SMOOTHdummy are each self-contained and carry their
 % OWN private copy of mm2sphere and of the kernel defaults. If those drift apart,
-% the same cfg silently produces different smoothing in different functions --
-% which is exactly what happened once during development.
+% the same cfg silently produces different smoothing in different functions.
 fprintf('\ncross-file consistency\n');
 
 check('mm2sphere factor identical in all three functions', @() assertSameFactor());
@@ -159,6 +176,93 @@ try
     error('assert:noError', 'expected error %s, none raised', id);
 catch ME
     assert(strcmp(ME.identifier, id), 'expected %s, got %s', id, ME.identifier);
+end
+end
+
+function runquiet(FS, source)
+cfg = basecfg(FS); cfg.numrandomization = 2;
+SMOOTHstat(cfg, source{:});
+end
+
+function src = shift(src, d)
+for k = 1:numel(src), src{k}.elec.chanpos = src{k}.elec.chanpos + d; end
+end
+
+function src = offsurface(FS, src, c)
+% move every electrode c mm along the outward normal of its nearest fsaverage pial vertex
+for h = {'lh','rh'}
+    s = smooth_read_surf(fullfile(FS,'subjects','fsaverage','surf',[h{1} '.pial']));
+    fn = cross(s.pos(s.tri(:,2),:) - s.pos(s.tri(:,1),:), s.pos(s.tri(:,3),:) - s.pos(s.tri(:,1),:), 2);
+    n = zeros(size(s.pos));                      % vertex normal = sum of adjacent face normals
+    for k = 1:3
+        for d = 1:3, n(:,d) = n(:,d) + accumarray(s.tri(:,k), fn(:,d), [size(s.pos,1) 1]); end
+    end
+    n = n ./ vecnorm(n, 2, 2);
+    for i = 1:numel(src)
+        p = src{i}.elec.chanpos; sel = (p(:,1) < 0) == strcmp(h{1},'lh');
+        if any(sel), src{i}.elec.chanpos(sel,:) = p(sel,:) + c*n(knnsearch(s.pos, p(sel,:)),:); end
+    end
+end
+end
+
+function assertPathIndependent(FS)
+% Put a read_surf.m that shifts every vertex by +1 mm first on the path: ft_read_headshape
+% follows it, smooth_read_surf must not.
+f    = fullfile(FS,'subjects','fsaverage5','surf','lh.pial');
+ref  = smooth_read_surf(f);
+shim = makeShim(FS);
+cleanup = onCleanup(@() removeShim(shim));
+b = smooth_read_surf(f);
+assert(isequal(b, ref), 'smooth_read_surf changed with a different read_surf.m on the path');
+end
+
+function assertStatPathIndependent(FS, source)
+cfg = basecfg(FS); cfg.numrandomization = 3;
+w = warning('off','all'); restore = onCleanup(@() warning(w));
+ref  = SMOOTHstat(cfg, source{:});
+shim = makeShim(FS);
+cleanup = onCleanup(@() removeShim(shim));
+got  = SMOOTHstat(cfg, source{:});
+assert(isequaln(ref.stat, got.stat) && isequaln(ref.prob, got.prob) && isequaln(ref.coverage, got.coverage), ...
+    'SMOOTHstat results changed with a shifted read_surf.m on the path');
+end
+
+function shim = makeShim(FS)
+% a read_surf.m that adds 1 mm to every vertex, first on the path (as iELVis's copy can be)
+ft_hastoolbox('freesurfer', 1);   % add FieldTrip's copy now, so it cannot land in front of the shim later
+shim = tempname; mkdir(shim);
+fid  = fopen(fullfile(shim,'read_surf.m'), 'w');
+fprintf(fid, 'function [v, f] = read_surf(fname)\ns = smooth_read_surf(fname); v = s.pos + 1; f = s.tri - 1;\n');
+fclose(fid);
+addpath(shim, '-begin'); rehash;
+f = fullfile(FS,'subjects','fsaverage5','surf','lh.pial');
+a = ft_read_headshape(f); b = smooth_read_surf(f);
+if ~isequal(a.pos, b.pos + 1)
+    removeShim(shim);
+    error('test:setup', 'test setup: the shifted read_surf.m was not picked up');
+end
+end
+
+function removeShim(shim)
+rmpath(shim); rmdir(shim, 's'); rehash;
+end
+
+function assertWarning(fn, id, expected)
+% expected = true: fn must issue warning id; false: it must not. The warning is turned into
+% an error for the duration, so no other warning can mask it.
+w = warning('off','all'); warning('error', id);
+restore = onCleanup(@() warning(w));
+got = '';
+try
+    evalc('fn()');
+catch ME
+    got = ME.identifier;
+    if ~strcmp(got, id), rethrow(ME); end
+end
+if expected
+    assert(strcmp(got, id), 'expected warning %s, none issued', id);
+else
+    assert(isempty(got), 'unexpected warning %s', id);
 end
 end
 

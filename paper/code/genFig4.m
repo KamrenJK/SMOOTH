@@ -6,8 +6,8 @@ function genFig4
 %   c) pairwise 2D histograms with "more sensitive" percentages (mean(y>x); see hist2pair, below)
 %
 % Brainmaps are individual pial panels (ft_plot_mesh curv backdrop + magma overlay, NO camlight), one
-% PDF each. Data: paper/data/benchmark_fig_data.mat (produced by a separate simulation pipeline that
-% is not distributed; only this cached .mat is needed to regenerate the figure).
+% PDF each. Data: paper/data/benchmark_fig_data.mat (produced by the simulation pipeline in
+% simulations/; only this cached .mat is needed to regenerate the figure).
 % Run WITH a display. Panels -> paper/figs/4/<dataset>/*.pdf
 % ------------------------------------------------------------------------------------------------
 clear; clc; close all;

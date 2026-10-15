@@ -6,8 +6,8 @@ function genFig1
 % scheme, transparent PNG brain maps (house convention, see genFig2_seedcorr.m's savepanel).
 % See genFig1_inputs.m for the companion toy-DV-icon panel.
 %
-% Data: paper/data/fig1_data.mat (export_fig1.py -- depends on a separate simulation pipeline that is
-% not distributed; only the cached .mat is needed to regenerate this figure).
+% Data: paper/data/fig1_data.mat (export_fig1.py, which uses the simulation helpers in simulations/code;
+% only the cached .mat is needed to regenerate this figure).
 % Run WITH a display. Panels -> paper/figs/1/*
 % ------------------------------------------------------------------------------------------------
 set(0,'DefaultFigureVisible','on');

@@ -1,0 +1,22 @@
+# Simulation-pipeline Apptainer/Singularity image (cluster runtime).
+# Build (from simulations/):  apptainer build env/smooth-simulations.sif env/apptainer.def
+# Run  :  slurm/env.sh's RUN() binds the repository and the fsaverage5 surfaces and sets PROJ /
+#         SMOOTH_REPO / SENS_FS_SURF; the image ships only the interpreter + libraries.
+Bootstrap: docker
+From: python:3.11-slim
+
+%files
+    requirements.txt /opt/requirements.txt
+
+%post
+    pip install --no-cache-dir -r /opt/requirements.txt
+
+%environment
+    export PYTHONUNBUFFERED=1 MPLBACKEND=Agg
+    export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 NUMEXPR_NUM_THREADS=1
+
+%runscript
+    exec python "$@"
+
+%test
+    python -c "import numpy, scipy, matplotlib; print('smooth-simulations OK', numpy.__version__)"

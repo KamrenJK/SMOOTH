@@ -18,7 +18,7 @@ exceeds chance, without relying on a predefined atlas.
 
 | | |
 |---|---|
-| MATLAB | R2022a or newer (developed and tested on R2024b), with the Statistics and Machine Learning Toolbox |
+| MATLAB | R2022a or newer (developed and tested on R2024b), with the Statistics and Machine Learning Toolbox. Regenerating the paper figures additionally uses the Optimization Toolbox (`lsqcurvefit`, Figure 2) and the Curve Fitting Toolbox (`smooth`, Supplementary Figure 2) |
 | [FieldTrip](https://www.fieldtriptoolbox.org) | any recent release |
 | [FreeSurfer](https://surfer.nmr.mgh.harvard.edu) | 7.x, with the `fsaverage` subject installed |
 
@@ -62,7 +62,8 @@ cfg.numrandomization = 1000;
 cfg.randomseed       = 42;                 % omit and results are NOT reproducible
 stat = SMOOTHstat(cfg, source{:});
 
-sig = find([stat.posclusters.prob] <= 0.05);
+% default tail is 'both', so each tail is tested at alpha/2 (stat.mask applies this)
+sig = find([stat.posclusters.prob] <= stat.cfg.alpha/2);
 ```
 
 Or just run the annotated walkthrough:
@@ -92,6 +93,14 @@ it was computed. **Coordinates must already be in fsaverage space**; hemisphere 
 the sign of x. Inputs are validated up front, so mismatched sizes, NaNs, or coordinates that
 do not look like fsaverage produce an explicit error or warning rather than silently wrong maps.
 
+SMOOTH reads the fsaverage surfaces with its own reader (`smooth/utils/smooth_read_surf.m`), so
+results do not depend on which `read_surf.m` is first on your MATLAB path. This matters because
+some toolboxes ship a modified copy: the one in iELVis (`FSURF_MATLAB/read_surf.m`) adds 1 mm to
+every vertex coordinate, and when it shadows FieldTrip's copy, `ft_read_headshape` returns a
+cortex shifted by +[1 1 1] mm. Electrodes localized on such a surface will sit about 1 mm off
+the true surface; `SMOOTHstat` warns (`SMOOTHstat:shiftedFrame`) when a subject's electrodes lie
+on the shifted surface rather than on the surface itself.
+
 ## Configuration
 
 Only `cfg.fshome` is required.
@@ -111,14 +120,15 @@ Only `cfg.fshome` is required.
 | `cfg.kernel` | `'gaussian'` | `'gaussian'` or `'boxcar'` |
 | `cfg.kernelwidth` | `12` | smoothing FWHM in mm, matched to the empirical HFB spatial-autocorrelation scale |
 | `cfg.graphsigma` | `8` | Gaussian σ (mm) for the electrode graph. Larger → smoother surrogates |
-| `cfg.randmethod` | `'signflip'` | `'signflip'`, or `'bandrotate'` for band-wise orthogonal rotation |
-| `cfg.rankrescale` | `'no'` | match surrogate marginals to the empirical map: `'exact'`, `'quantile'`, `'zscore'` |
+| `cfg.randmethod` | `'signflip'` | random sign flips of the modal coefficients, the only supported method. (`'bandrotate'`, band-wise orthogonal rotation, is experimental: not validated, and not in the Python port) |
+| `cfg.rankrescale` | `'exact'` | match surrogate marginals to the empirical map. `'exact'` (recommended; used throughout the paper) replaces each surrogate's values, rank for rank, with the empirical values, which is important for preserving the empirical marginal distribution and spatial smoothness. `'zscore'` (mean and SD only) and `'no'` may be less effective; `'quantile'` is the same rank matching restricted to covered vertices |
 
 ### Inference
 | option | default | meaning |
 |---|---|---|
 | `cfg.tail` | `'both'` | which tail `stat.mask` reflects. One-tailed uses `cfg.alpha`; `'both'` uses `cfg.alpha/2` per tail (Bonferroni across tails) |
-| `cfg.clusteralpha` | `0.05` | cluster-forming threshold per tail |
+| `cfg.clusteralpha` | `0.05` | cluster-forming threshold per tail: vertices with t ≥ Φ⁻¹(1 − `clusteralpha`) form clusters |
+| `cfg.alpha` | `0.05` | cluster-level significance applied to the permutation p-values (halved per tail when `cfg.tail='both'`) |
 | `cfg.minnbsub` | `3` | minimum subjects contributing to a vertex |
 | `cfg.equalize_n` | `'no'` | downweight high-coverage vertices in the t-statistic |
 | `cfg.normalize` | `'no'` | per-subject z-scoring before the group test |
@@ -137,6 +147,8 @@ Only `cfg.fshome` is required.
 | `cfg.subsamplesurr` | `'yes'` | keep only `nsurrsamples` surrogates instead of all |
 | `cfg.nsurrsamples` | `100` | how many to keep |
 | `cfg.feedback` | `'text'` | `'no'` to silence progress |
+| `cfg.returncache` | `'no'` | `'yes'` returns `stat.cache` (meshes, projectors, eigenbases) for reuse |
+| `cfg.cache` | `[]` | a `stat.cache` from an earlier call on the same montage and kernel; skips recomputing geometry (results are identical) |
 
 Subject-level surrogates are stored as `nsubjects × nvertices × nsurrsamples`. For 38 subjects
 that is ~9 GB at `nsurrsamples=100`. SMOOTHstat reports the allocation and warns above 4 GB.
@@ -188,7 +200,7 @@ for mass, p, members in res["posclusters"]:
 ```
 
 For a runnable introduction instead of a snippet, see [`demo/smoothdemo.py`](demo/smoothdemo.py) —
-reproduces the primary dataset's reported clusters (pMTG p=0.001, rTPJ p=0.009) end to end
+reproduces the primary dataset's reported clusters (pMTG and rTPJ; MATLAB p = 0.002 and 0.012) end to end
 (`python demo/smoothdemo.py`; add `--quick` for a ~15 s fsaverage5 sanity check instead of the full
 ~5 min fsaverage run).
 
@@ -196,13 +208,18 @@ reproduces the primary dataset's reported clusters (pMTG p=0.001, rTPJ p=0.009) 
 
 ## Reproducing the manuscript
 
-Every `genFig*` script loads a cached `.mat`/`.npz` from `paper/data/` and renders directly from
-it — none require re-running an analysis to reproduce a figure. Some of those cached files were
-themselves produced by a one-off `export_*` script that depends on private, unpublished
-infrastructure (a separate simulation/analysis codebase, raw clinical recordings, or a compute
-cluster); those exporters are documented in each `genFig*` script's header for provenance, but are
-not required, and will not run standalone outside that infrastructure. Run with a display unless a
-script's header says otherwise.
+Most `genFig*` scripts load cached results from `paper/data/` and render directly from them, in
+seconds to a few minutes. Not all do: `genFig5` reruns SMOOTH and the random-sign-flip comparison on
+all three datasets (1,000 permutations each; about 20 min), `genFig2_surrogates` reruns SMOOTH for
+the communication dataset (about 7 min, and RAM-heavy: it keeps every participant's 500 surrogate
+maps in memory, about 48 GB), `genFigS2` recomputes each participant's spatial basis (under a
+minute), and the exporters `export_fig5_sa` and `export_smooth_sigmaps` rerun SMOOTH to rewrite
+their files in `paper/data/` (about 5 and 10 min). Times are from a 64-GB laptop. Other cached files
+were produced by one-off `export_*` scripts that need data not distributed here (raw clinical
+recordings, native surface reconstructions) or by the simulation pipeline in `simulations/`, which
+ran on a computing cluster; those exporters are documented in each `genFig*` script's header for
+provenance and are not needed to regenerate the figures. Run with a display unless a script's
+header says otherwise.
 
 ```matlab
 paths = smooth_setup();
@@ -213,7 +230,7 @@ genFig1;          % Fig 1  graphical overview (real rTPJ workflow example)
 genFig1_inputs;   % Fig 1  inset: toy dependent-variable icons
 genFig2;            % Fig 2  spatial autocorrelation of iEEG signals -- panel b
 genFig2_seedcorr;   % Fig 2  panel a (seed-correlation berry map)
-genFig2_surrogates; % Fig 2  panels c-f (surrogate generation / semivariogram / Moran's I)
+genFig2_surrogates; % Fig 2  panels c-f (surrogate generation / semivariogram / Moran's I); needs ~48 GB RAM
 genFig3;            % Fig 3  false-positive control under spatial autocorrelation
 genFig4;          % Fig 4  detection sensitivity vs. atlas-based analyses
 genFig5;          % Fig 5  recovers effects across three iEEG datasets (ALSO writes SF7, see below)
@@ -228,6 +245,8 @@ genFigS6;  % SF6  comparison of analysis approaches across datasets
 %          % SF7  RSF reconstruction -- produced by genFig5 (above), not a separate script:
 %          % it reuses the same SMOOTH/RSF run Figure 5 computes, so splitting it out would mean
 %          % either duplicating that run or shipping the multi-GB surrogate ensembles it depends on.
+genFigS7_tencomponents;  % SF7  ten-component comparison across datasets (from genFig5's saved results)
+genFig5_nullhist;        % Fig 5 null-distribution panels, redrawn in seconds from genFig5's saved results
 ```
 
 Set `savefigs = true` near the top of a script (where present) to write PDFs to `paper/figs/<n>/`
@@ -235,7 +254,8 @@ or `paper/figs/S<n>/`.
 
 Figure 3's false-positive-control simulations and most supplementary-figure simulations were run on
 a computing cluster with a separate simulation pipeline; `paper/data/` ships their cached results
-so the figures regenerate without it.
+so the figures regenerate without it. That pipeline's code is included in `simulations/` for
+transparency (see `simulations/README.md`); it is not needed to regenerate any figure.
 
 ## Data
 
@@ -246,21 +266,25 @@ the distributed file is de-identified.
 
 `paper/data/corrsource.mat` carries the same cohort's native-space electrode positions and
 per-channel LFP/low-frequency/HFB correlation matrices (Figure 2's spatial-autocorrelation
-analysis). `paper/data/natcortex_P19.mat` is one participant's native pial surface reconstruction,
+analysis), plus each contact's distance to its native pial surface (`elec.dist2surf`, recomputed
+by `paper/code/export_dist2surf.py` from the unpublished surface reconstructions). `paper/data/natcortex_P19.mat` is one participant's native pial surface reconstruction,
 used only for Figure 2's seed-correlation berry map (`genFig2_seedcorr.m`) — a cortical surface
 mesh carries no facial or scalp geometry. Both are de-identified consistent with the IRB-approved
 protocols above.
 
 ## Citation
 
-If you use SMOOTH, please cite the manuscript and the software (see `CITATION.cff`).
+If you use SMOOTH, please cite the manuscript and the software (see `CITATION.cff`). Changes between
+versions are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## Third-party code
 
 `external/slanCM` — colormaps by Zhaoxu Liu, BSD-3-Clause (see
 `external/slanCM/license.txt`), incorporating colormaps derived from
-[matplotlib](https://matplotlib.org) and [scicomap](https://github.com/ThomasBury/scicomap)
-(MIT). Full notices in [NOTICE](NOTICE).
+[matplotlib](https://matplotlib.org), [cmasher](https://cmasher.readthedocs.io) (BSD-3-Clause) and
+[scicomap](https://github.com/ThomasBury/scicomap) (MIT). The Schaefer-300 parcel labels in
+`paper/data/schaefer300_fs5.npz` come from [CBIG](https://github.com/ThomasYeoLab/CBIG) (MIT).
+Full notices in [NOTICE](NOTICE).
 
 ## License
 

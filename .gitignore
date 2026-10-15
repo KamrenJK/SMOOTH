@@ -19,3 +19,20 @@ demo/smoothdemo_nulldist.png
 # Scratch
 *.log
 tmp/
+
+# Local working files (never published)
+devnotes.md
+devrun.m
+paper/code/deprecated/
+external/colormaps/
+paper/text/
+paper/data/anisononstat/mesh_eig_*.npz
+paper/data/anisononstat_fig_data.mat
+paper/data/anisononstat_fig_data_v2.mat
+paper/data/cogitate_electrodes.mat
+paper/data/cogitate_kw_sweep.mat
+paper/data/fwer_aniso/
+paper/data/fwer_nonstat/
+paper/data/genFig5_results_*.mat
+paper/data/overview_*.mat
+paper/data/powerlawfit_fig_data.mat

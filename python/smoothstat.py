@@ -21,8 +21,8 @@ Group:
   * p = (#{null >= mass} + 1) / (nperm + 1).
 
 Electrode coordinates must be in **fsaverage** space (same frame the MATLAB pipeline uses); they are
-snapped to the nearest surface vertex internally. Coordinates are shifted by +[1,1,1] to match
-FieldTrip's `ft_read_headshape` frame (the frame the electrodes were localized in).
+snapped to the nearest pial vertex internally. Surfaces are used exactly as stored (FreeSurfer surface
+RAS), as `smooth/utils/smooth_read_surf.m` reads them in MATLAB.
 
 Usage
 -----
@@ -46,7 +46,6 @@ from scipy.sparse.csgraph import connected_components
 from scipy.stats import norm
 
 MM2SPHERE = 1.25                      # sphere-units per mm (measured median pial/spherical edge ratio)
-FT_OFFSET = np.array([1.0, 1.0, 1.0])  # ft_read_headshape returns FS coords +[1,1,1]; electrodes live in that frame
 
 
 # ----------------------------------------------------------------------------- geometry / IO
@@ -59,8 +58,8 @@ def default_subjects_dir():
 
 
 def read_surface(fname):
-    """Minimal FreeSurfer triangular-surface reader (matches mne.read_surface / FieldTrip's
-    ft_read_headshape up to the +[1,1,1] offset the callers add). Returns (vertices, faces)."""
+    """Minimal FreeSurfer triangular-surface reader (matches nibabel, mne.read_surface and
+    smooth_read_surf.m). Returns (vertices, faces)."""
     with open(fname, "rb") as f:
         f.read(3)                                  # magic
         f.readline(); f.readline()                 # comment + blank line
@@ -78,7 +77,7 @@ def load_mesh(mesh="fsaverage", subjects_dir=None):
     for h in ("lh", "rh"):
         pial, _ = read_surface(f"{sd}/{mesh}/surf/{h}.pial")
         sph, tri = read_surface(f"{sd}/{mesh}/surf/{h}.sphere.reg")
-        surf[h] = dict(pial=pial + FT_OFFSET, sph=sph + FT_OFFSET, tri=tri)
+        surf[h] = dict(pial=pial, sph=sph, tri=tri)
     nL, nR = len(surf["lh"]["pial"]), len(surf["rh"]["pial"])
     tri = np.vstack([surf["lh"]["tri"], surf["rh"]["tri"] + nL])
     ii = np.concatenate([tri[:, 0], tri[:, 0], tri[:, 1], tri[:, 1], tri[:, 2], tri[:, 2]])
@@ -86,6 +85,40 @@ def load_mesh(mesh="fsaverage", subjects_dir=None):
     nV = nL + nR
     adj = (csr_matrix((np.ones(len(ii)), (ii, jj)), shape=(nV, nV)) > 0).astype(np.int8)
     return surf, nL, nR, adj
+
+
+def check_frame(subs, surf):
+    """Warn when electrodes sit on the pial surface displaced by +[1,1,1] mm rather than on the surface
+    itself: the signature of coordinates made with a read_surf.m that adds 1 to every vertex (e.g. the
+    copy shipped with iELVis). The +[1,1,1] copy must also be much closer than copies shifted by the
+    other seven sign combinations of [+-1,+-1,+-1], so electrodes floating a millimetre or two off the
+    surface, depth contacts and unprojected coordinates are not flagged. Mirrors check_frame in
+    SMOOTHstat.m. Needs fsaverage resolution: on fsaverage5 (vertices ~4 mm apart) a 1 mm shift cannot
+    be told from vertex spacing, so the check is skipped."""
+    if len(surf["lh"]["pial"]) < 100000:
+        return
+    trees = {h: cKDTree(surf[h]["pial"]) for h in ("lh", "rh")}
+    shifts = np.array([[1, 1, 1]] + [[2 * int(b) - 1 for b in f"{k:03b}"] for k in range(7)], float)
+    bad, dsurf, dshift = [], [], []
+    for s, (cp, _) in enumerate(subs, 1):
+        cp = np.asarray(cp, float).reshape(-1, 3)
+        if len(cp) == 0: continue
+        d = [[] for _ in range(9)]
+        for h, m in (("lh", cp[:, 0] < 0), ("rh", cp[:, 0] >= 0)):
+            if not m.any(): continue
+            d[0].append(trees[h].query(cp[m])[0])
+            for k, sh in enumerate(shifts, 1):               # distance to the surface moved by sh
+                d[k].append(trees[h].query(cp[m] - sh)[0])
+        med = [np.median(np.concatenate(x)) for x in d]
+        if med[0] > 0.5 and med[1] < 0.5 * min([med[0]] + med[2:]):
+            bad.append(s); dsurf.append(med[0]); dshift.append(med[1])
+    if bad:
+        warnings.warn(f"Electrodes of {len(bad)} subject(s) ({bad}) lie on the pial surface shifted by "
+                      f"+[1,1,1] mm (median distance {np.median(dshift):.2f} mm) rather than on the surface "
+                      f"itself ({np.median(dsurf):.2f} mm). This happens when electrodes are localized with a "
+                      "read_surf.m that adds 1 to every vertex coordinate, such as the copy shipped with "
+                      "iELVis. Check how the coordinates were made; if this is the cause, subtract 1 from "
+                      "chanpos or re-localize with an unmodified reader.")
 
 
 # ----------------------------------------------------------------------------- operators
@@ -110,7 +143,7 @@ def hemi_smoother(elec, pial, sph, kernelwidth=12.0):
     """Column-normalized Gaussian projector P (nVert x nElec) in sphere coords (each electrode spreads
     unit mass), + the electrodes' sphere positions and a support mask. Matches SMOOTHsub.m."""
     idx = cKDTree(pial).query(elec, k=1)[1]; esph = sph[idx]
-    sig_u = MM2SPHERE * (kernelwidth / 2.3548); R = 3 * sig_u
+    sig_u = MM2SPHERE * kernelwidth / (2 * np.sqrt(2 * np.log(2))); R = 3 * sig_u   # FWHM -> sigma, as in MATLAB
     stree = cKDTree(sph); nV = len(sph); rows, cols, vals = [], [], []
     for e, es in enumerate(esph):
         nb = stree.query_ball_point(es, R); dd = np.linalg.norm(sph[nb] - es, axis=1)
@@ -195,6 +228,7 @@ def run_smoothstat(subs, surf, nL, nR, adj, numrand=1000, clusteralpha=0.05, alp
     """
     if tail not in ("positive", "negative", "both"):
         raise ValueError(f"tail must be 'positive', 'negative' or 'both' (got {tail!r})")
+    check_frame(subs, surf)
     S = [Subject(cp, np.asarray(y, float).ravel(), surf, nL, nR, kernelwidth, graphsigma) for cp, y in subs]
     allmaps = np.column_stack([s.empirical() for s in S])
     coverage = np.sum(~np.isnan(allmaps), axis=1); mask = coverage < minnbsub

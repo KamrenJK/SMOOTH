@@ -5,20 +5,17 @@ Runs the SMOOTH group test on the RIGHT hemisphere over all socialcog (primary d
 using each subject's REAL per-electrode z-stat as the DV (no simulated bump), finds the significant
 cluster on right TPJ, and picks 3 exemplar subjects covering that cluster with positive effects.
 Exports per-subject coverage/smoothed maps, 3 sign-flip surrogates each, and the graph + eigenmodes +
-spectra for each exemplar -- all the pieces for the Figure 1 workflow schematic. Reuses
-sensitivity_core from a separate simulation pipeline (not distributed), and needs the fsaverage5
-Schaefer-300 (17-network) right-hemisphere annot, so -- like every other one-off exporter in this codebase -- this script cannot
-be run from the published repository alone; only its cached output (fig1_data.mat) is needed to
-regenerate the figure.
+spectra for each exemplar -- all the pieces for the Figure 1 workflow schematic. Reuses the
+simulation pipeline's helpers (../../simulations/code) and needs the fsaverage5 Schaefer-300
+(17-network) right-hemisphere annot. Only its cached output (fig1_data.mat) is needed to regenerate the
+figure.
 
-  SMOOTH_SCHAEFER_ANNOT=<rh.Schaefer2018_300Parcels_17Networks_order.annot> SMOOTH_PRIVATECODE=<simulation-pipeline code dir>
-  SENS_MESH_EIG_TAG=5000 CS_SURF_FS5=<.../fsaverage5> python export_fig1.py
+  SMOOTH_SCHAEFER_ANNOT=<rh.Schaefer2018_300Parcels_17Networks_order.annot> python export_fig1.py
 """
 import os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 if not os.environ.get("SMOOTH_SCHAEFER_ANNOT"): sys.exit("Set SMOOTH_SCHAEFER_ANNOT to the fsaverage5 rh Schaefer-300 (17-network) annot file.")
-if not os.environ.get("SMOOTH_PRIVATECODE"): sys.exit("Set SMOOTH_PRIVATECODE to the simulation-pipeline code directory (not distributed).")
-sys.path.insert(0, os.environ["SMOOTH_PRIVATECODE"])
+sys.path.insert(0, os.path.abspath(os.path.join(HERE, "..", "..", "simulations", "code")))
 import numpy as np, nibabel as nib
 from scipy.spatial import cKDTree
 from scipy.sparse import csr_matrix
@@ -27,20 +24,20 @@ from scipy.io import savemat
 import config as C, cs_common as CC, sensitivity_core as SC
 
 DATA = os.path.abspath(os.path.join(HERE, "..", "data"))
-FS = os.environ.get("SENS_FS_SURF", "/Applications/freesurfer/7.3.2/subjects/fsaverage5/surf")
+FS = C.FS_SURF
 HEMI = "rh"; NPERM = int(os.environ.get("OV_NPERM", "300")); NSURR = 3; FLIP_SEED = 11
 rng = np.random.default_rng(7)
-base = os.path.join(C.SURF_DIR, C.MESH); off = np.array(C.FT_OFFSET)
+base = C.FS_SURF
 
-# ---------------- geometry ----------------
-vpos, faces = SC.read_fs_surface(f"{base}/{HEMI}.pial"); vpos = vpos + off
-sph, _ = SC.read_fs_surface(f"{base}/{HEMI}.sphere.reg"); sph = sph + off
+# ---------------- geometry (surfaces as stored, matching smooth_read_surf.m; the simulations'
+# C.FT_OFFSET is deliberately not applied here, since this is real electrode data) ----------------
+vpos, faces = SC.read_fs_surface(f"{base}/{HEMI}.pial")
+sph, _ = SC.read_fs_surface(f"{base}/{HEMI}.sphere.reg")
 curv = nib.freesurfer.read_morph_data(f"{FS}/{HEMI}.curv").astype(float)
 nV = len(vpos)
 Ei = faces[:, [0, 1, 2]].ravel(); Ej = faces[:, [1, 2, 0]].ravel()
 adj = (csr_matrix((np.ones(len(Ei)*2), (np.r_[Ei, Ej], np.r_[Ej, Ei])), shape=(nV, nV)) > 0).astype(np.int8)
 zpos = norm.ppf(1 - C.CLUSTERALPHA)
-lam_m, Qm = SC.load_mesh_eig(HEMI); Pw = 1.0/np.power(lam_m + np.median(lam_m), C.BETA); Pw[0] = 0.0
 vt = cKDTree(vpos)
 ap = np.load(os.path.join(DATA, "aparc_fs5.npz"), allow_pickle=True)
 rh_names = [str(x) for x in ap["rh_names"]]; rh_lab = ap["rh_labels"].astype(int)

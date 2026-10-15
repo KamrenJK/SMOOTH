@@ -16,8 +16,8 @@ Per-channel p by dataset (from the same DVs SMOOTH is run on):
 Renders on fsaverage5 (both atlases exist as fs5 npz). Emits per-fs5-vertex significant-parcel t-maps so
 the MATLAB figure only loads + renders. Writes paper/data/methodscomparison_pvals.mat.
 
-Requires the Berezutskaya and COGITATE per-subject DV derivatives and fsaverage5 atlas lookups, which
-are not distributed; only the cached output is needed to regenerate the figure.
+Requires the Berezutskaya and COGITATE per-subject DV derivatives, which are not distributed, and the
+fsaverage5 atlas lookups in paper/data/; only the cached output is needed to regenerate the figure.
 """
 import os, glob, numpy as np, pandas as pd
 from scipy.io import loadmat, savemat
@@ -33,7 +33,6 @@ DATA = os.path.join(PUB, "paper", "data")
 if not os.environ.get("SMOOTH_DERIVATIVES"):
     raise SystemExit("Set SMOOTH_DERIVATIVES to the per-dataset DV derivatives root (not distributed).")
 ROOT = os.environ["SMOOTH_DERIVATIVES"]
-FT   = np.array([1.0, 1.0, 1.0])
 DVLIM = {"socialcog": 10.0, "berezutskaya": 2.0, "cogitate": 1.0}                  # per-dataset DV colour limit
 def _bad(n): n = n.lower(); return ("unknown" in n or "medial" in n or "background" in n or "corpuscallosum" in n or n == "")
 
@@ -50,7 +49,7 @@ def load_fs5():
     for h in ("lh", "rh"):
         pos, tri = nib.freesurfer.read_geometry(f"{FS}/fsaverage5/surf/{h}.pial")
         curv = nib.freesurfer.read_morph_data(f"{FS}/fsaverage5/surf/{h}.curv")
-        P[h] = (pos + FT, tri, curv); trees[h] = cKDTree(pos + FT)
+        P[h] = (pos, tri, curv); trees[h] = cKDTree(pos)                  # surfaces as stored
     nL = len(P["lh"][0])
     pos = np.vstack([P["lh"][0], P["rh"][0]]); tri = np.vstack([P["lh"][1], P["rh"][1] + nL])
     curv = np.concatenate([P["lh"][2], P["rh"][2]])

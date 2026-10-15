@@ -50,7 +50,17 @@ end
 % plot
 f = figure('color',[1 1 1]); hold on;
 cmap = get(gca,'ColorOrder');
+rng(42);  % reproducible bootstrap CIs
 CI = bootci(1000,@mean,group_fits);
+band = {'LFP','low freq','HFB'};
+for k = 1:3
+    fprintf('FWHM %-8s %.2f +- %.2f mm (mean +- SD), 95%% CI of the mean [%.2f %.2f] (n = %d)\n', band{k}, ...
+        mean(group_fits(:,k)), std(group_fits(:,k)), CI(1,k), CI(2,k), sum(isfinite(group_fits(:,k))));
+end
+for pr = [2 1; 2 3; 1 3]'
+    [~, pv, ~, st] = ttest(group_fits(:,pr(1)), group_fits(:,pr(2)));
+    fprintf('FWHM %s vs %s: paired t(%d) = %.2f, p = %.3g\n', band{pr(1)}, band{pr(2)}, st.df, st.tstat, pv);
+end
 swarmchart(ones(length(group_fits)-1,1),group_fits(1:nsubs~=sID,1),144,'filled','^','MarkerFaceAlpha',0.5,'XJitterWidth',0.25,'MarkerFaceColor',cmap(6,:))
 swarmchart(2.*ones(length(group_fits)-1,1),group_fits(1:nsubs~=sID,2),144,'filled','^','MarkerFaceAlpha',0.5,'XJitterWidth',0.25,'MarkerFaceColor',cmap(3,:))
 swarmchart(3.*ones(length(group_fits)-1,1),group_fits(1:nsubs~=sID,3),144,'filled','^','MarkerFaceAlpha',0.5,'XJitterWidth',0.25,'MarkerFaceColor',cmap(4,:))
@@ -109,7 +119,7 @@ function [fits, d, signal] = fitbrainSA(source)
 %   d        [nPairs x 1] Euclidean distances (mm) for included pairs
 %   signal   [nPairs x 3] correlations for included pairs
 
-% prune by distance
+% prune by distance to the native pial surface (elec.dist2surf, mm; see export_dist2surf.py)
 lim         = 7.5;
 keep        = source.elec.dist2surf <= lim | source.elec.ecog;
 pos         = source.elec.nativechanpos(keep,:);
@@ -146,7 +156,9 @@ for k = 1:size(signal,2)
         continue;
     end
 
-    sigfit = lsqcurvefit(model, initial, dk, yk);  % requires Optimization Toolbox
+    % requires Optimization Toolbox; the default 100 evaluations can stop a fit before it converges
+    opts   = optimoptions('lsqcurvefit', 'Display','off', 'MaxFunctionEvaluations',2000, 'MaxIterations',1000);
+    sigfit = lsqcurvefit(model, initial, dk, yk, [], [], opts);
     fits(k) = 2*sqrt(2*log(2)) * sigfit;           % FWHM
 end
 end

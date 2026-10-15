@@ -1,4 +1,4 @@
-function genFig5(NPERM, only)
+function genFig5(NPERM, only, savedir)
 % ------------------------------------------------------------------------------------------------
 % Figure 5. SMOOTH recovers real, domain-appropriate effects in THREE independent iEEG datasets.
 % One column per dataset (primary social-cognition | Berezutskaya ds003688 | COGITATE), each with:
@@ -6,8 +6,10 @@ function genFig5(NPERM, only)
 %   (mid)    per-electrode dependent variable (berry), dataset-specific scale
 %   (bottom) group-level SMOOTH t-map (+-4)
 %   + surrogate-null validation: per-subject spatial-autocorrelation (Moran's I) scatter (empirical vs
-%     surrogate), PC cumulative-variance of the surrogate ensemble (SMOOTH vs RSF, nPC90), and the
-%     max-cluster-mass null distribution (SMOOTH vs RSF) with observed clusters + p-values annotated.
+%     surrogate mean +- SD, from the SMOOTHdiag values in paper/data/fig5_sa_moran.mat, written by
+%     export_fig5_sa.m), PC
+%     cumulative-variance of the surrogate ensemble (SMOOTH vs RSF, nPC90), and the max-cluster-mass
+%     null distribution (SMOOTH vs RSF) with observed clusters + p-values annotated.
 %
 % This script ALSO produces Supplementary Figure 7 (RSF reconstruction) as a side effect, rather than
 % as a separate entry point: both depend on the exact same per-dataset SMOOTH/RSF run (same NPERM,
@@ -19,11 +21,16 @@ function genFig5(NPERM, only)
 % All three datasets are reduced to the same `source` format (per-subject .stat + .elec.chanpos in
 % fsaverage coords); SMOOTH is re-run live from those sources (the repo ships the small sources, not the
 % multi-GB surrogate ensembles). Run WITH a display. Optional arg NPERM (default 1000; use e.g. 100 for a
-% quick preview).
+% quick preview). Optional arg SAVEDIR: also save each dataset's full SMOOTH and RSF output structs,
+% surrogate ensembles included (several GB per dataset), so panels can be redrawn without re-running.
 %
 % OUTPUT
 %   paper/figs/5/<dataset>/   Figure 5 panels
 %   paper/figs/S7/<dataset>/  Supplementary Figure 7 panels (RSF-vs-SMOOTH t-map reconstruction)
+%   paper/figs/S7/tencomponents.pdf  Supplementary Figure 7 ten-component comparison, all three
+%                             datasets (genFigS7_tencomponents, from genFig5_results.mat)
+% The null-distribution panels are drawn by genFig5_nullhist, which can also redraw them alone from
+% genFig5_results.mat (genFig5_nullhist; genFig5_nullhist('density') for kernel density curves).
 %   paper/figs/legacy/        any previous contents of the above, timestamped
 % Nothing is overwritten: archive_existing() moves prior output to legacy/ before each run.
 % Cluster-forming alpha is PER DATASET (see the DS table) and must match export_smooth_sigmaps.m.
@@ -31,13 +38,17 @@ function genFig5(NPERM, only)
 clc; close all;
 if nargin < 1 || isempty(NPERM), NPERM = 1000; end
 if nargin < 2, only = {}; end                                % e.g. genFig5(1000,'primary') to redo one
+if nargin < 3, savedir = ''; end
 if ischar(only) || isstring(only), only = cellstr(only); end
-NSA = 20; SEED = 42;                                        % small run for the per-subject SA scatter
+SEED = 42;
 addpath(fullfile(fileparts(mfilename('fullpath')),'..','..'));
 paths = smooth_setup('quiet');
 
 cortex = load_fsaverage_mesh(paths.freesurfer);
-adj    = mesh_adjacency(cortex.tri, size(cortex.pos,1));    % vertex adjacency (for Moran's I)
+SA     = load(fullfile(paths.data,'fig5_sa_moran.mat'));     % per-participant Moran's I (SMOOTHdiag) for panel F
+if ~isfield(SA, 'generated_by')
+    error('genFig5:staleSA', 'paper/data/fig5_sa_moran.mat predates export_fig5_sa.m; regenerate it with export_fig5_sa.');
+end
 grn = slanCM('Greens'); try rdbu = flipud(slanCM('RdBu')); catch, rdbu = jet(256); end
 
 % dataset | source file | DV label | DV colour limit (+-) | cluster-forming alpha
@@ -46,8 +57,9 @@ grn = slanCM('Greens'); try rdbu = flipud(slanCM('RdBu')); catch, rdbu = jet(256
 % default -- it is not uniform across datasets and a silent default misreproduces this figure. These
 % values MUST stay in sync with export_smooth_sigmaps.m, which feeds the SMOOTH row of the
 % methods-comparison supplement; if the two disagree, the same clusters are drawn two different ways.
-% Berezutskaya uses 0.01 (z = 2.33): at 0.05 the whole left temporal-frontal territory merges into a
-% single 12,691-vertex cluster, whereas 0.01 resolves the three clusters the manuscript reports.
+% Berezutskaya uses 0.01 (z = 2.33), the threshold the manuscript reports for this dataset. Its three
+% clusters (lh superior/middle temporal, lh precentral/pars opercularis, rh insula) are already separate
+% at 0.05, where they are larger (13,110 / 7,220 / 1,908 vertices).
 DS = { 'primary',      fullfile(paths.demo,'source.mat'),              'z-value',  10, 0.05 ;
        'berezutskaya', fullfile(paths.data,'source_berezutskaya.mat'), 'Fisher-z',  2, 0.01 ;
        'cogitate',     fullfile(paths.data,'source_cogitate.mat'),     'R',         1, 0.05 };
@@ -87,6 +99,8 @@ for di = 1:size(DS,1)
     else
         R.cluster_p_RSF = [];
     end
+    R.null_SMOOTH   = double(stat.posdistribution(:));      % max-cluster-mass nulls, so panel D can be replotted
+    R.null_RSF      = double(statRSF.posdistribution(:));
     R.tmap          = double(stat.stat(:));
     R.coverage      = double(stat.coverage(:));
 
@@ -96,16 +110,16 @@ for di = 1:size(DS,1)
     cbar(outdir,'cbar_coverage', grn, [0 20], 'subjects');
 
     % ---- (B) per-electrode DV berry ----
-    [CP, ST] = gather_channels(source, cortex);
-    berry(cortex, CP, ST, [-dvlim dvlim], rdbu, outdir, 'berry');
+    berry(cortex, source, [-dvlim dvlim], rdbu, outdir, 'berry');
     cbar(outdir,'cbar_dv', rdbu, [-dvlim dvlim], dvlab);
 
     % ---- (C) group SMOOTH t-map ----
     render(cortex, double(stat.stat), [-4 4], rdbu, outdir, 'tmap');
     cbar(outdir,'cbar_t', rdbu, [-4 4], 't-value');
 
-    % ---- (D) max-cluster-mass null distribution (SMOOTH vs RSF) ----
-    null_hist(stat, statRSF, outdir);
+    % ---- (D) max-cluster-mass null distribution (SMOOTH vs RSF); genFig5_nullhist redraws it from
+    %      genFig5_results.mat in seconds, so axis changes need no re-run ----
+    genFig5_nullhist('histogram', outdir, R);
 
     % ---- (E) PC cumulative variance of the surrogate ensemble ----
     [R.nPC90_SMOOTH, R.nPC90_RSF, R.cumvar_SMOOTH, R.cumvar_RSF] = pc_variance(stat, statRSF, outdir);
@@ -115,16 +129,15 @@ for di = 1:size(DS,1)
     %      since each render is slow.
     recondir = fullfile(paths.figs,'S7',name);   % its own supplementary figure,
     archive_existing(recondir);                                     % not mixed into figs/5
-    [R.recon_r, R.recon_k] = pc_reconstruction(stat, statRSF, cortex, rdbu, recondir, strcmp(name,'primary'));
+    [R.recon_r, R.recon_k, R.recon_var] = pc_reconstruction(stat, statRSF, cortex, rdbu, recondir, strcmp(name,'primary'));
 
     % ---- (F) per-subject spatial-autocorrelation scatter (empirical vs surrogate Moran's I) ----
-    try
-        [R.sa_p, R.sa_n, R.sa_emp, R.sa_surr] = sa_scatter(cfg, source, adj, NSA, SEED, outdir);
-    catch e
-        warning('genFig5:SA', 'SA scatter skipped for %s: %s', name, e.message);
-        R.sa_p = NaN; R.sa_n = NaN; R.sa_emp = []; R.sa_surr = [];
-    end
+    [R.sa_p, R.sa_t, R.sa_n, R.sa_emp, R.sa_surr, R.sa_surr_sd] = sa_panel(SA.(name), strcmp(name,'primary'), outdir);
     RES.(name) = R;
+    if ~isempty(savedir)
+        if ~isfolder(savedir), mkdir(savedir); end
+        save(fullfile(savedir, sprintf('genFig5_%s_stat.mat', name)), 'stat', 'statRSF', '-v7.3');
+    end
     clear stat statRSF                                     % free the surrogate ensembles before the next dataset
 end
 resfile = fullfile(paths.data,'genFig5_results.mat');
@@ -135,6 +148,9 @@ save(resfile, '-struct', 'RES');
 fprintf('\nwrote Figure 5 panels to %s\n', fullfile(paths.figs,'5'));
 fprintf('wrote derived numbers to %s\n', resfile);
 summarize(RES, DS(:,1));
+if all(isfield(RES, DS(:,1)'))                      % cross-dataset panel of Supplementary Figure 7
+    genFigS7_tencomponents(10);
+end
 end
 
 function summarize(RES, names)
@@ -159,24 +175,11 @@ end
 
 % ==================================== helpers ====================================
 function cortex = load_fsaverage_mesh(fshome)
-lh = ft_read_headshape(fullfile(fshome,'subjects','fsaverage','surf','lh.pial'));
-rh = ft_read_headshape(fullfile(fshome,'subjects','fsaverage','surf','rh.pial'));
+lh = smooth_read_surf(fullfile(fshome,'subjects','fsaverage','surf','lh.pial'));
+rh = smooth_read_surf(fullfile(fshome,'subjects','fsaverage','surf','rh.pial'));
 cortex.pos = [lh.pos; rh.pos]; cortex.tri = [lh.tri; rh.tri + size(lh.pos,1)]; cortex.unit = lh.unit;
 if isfield(lh,'curv') && isfield(rh,'curv'), cortex.curv = [lh.curv; rh.curv];
 else, cortex.curv = zeros(size(cortex.pos,1),1); end
-end
-
-function adj = mesh_adjacency(tri, nV)
-E = [tri(:,[1 2]); tri(:,[2 3]); tri(:,[3 1])]; E = [E; E(:,[2 1])];
-adj = sparse(E(:,1), E(:,2), 1, nV, nV) > 0;
-end
-
-function [CP, ST] = gather_channels(source, cortex)
-CP = []; ST = [];
-for i = 1:numel(source)
-    cp = double(source{i}.elec.chanpos); D = pdist2(cortex.pos, cp); [~, idx] = min(D, [], 1);
-    CP = [CP; cortex.pos(idx,:)]; ST = [ST; double(source{i}.stat(:))];   %#ok<AGROW> snap to nearest vertex (jitter fix)
-end
 end
 
 function archive_existing(d)
@@ -213,19 +216,7 @@ if ~isempty(rr), r = min(rr):max(rr); c = min(cc):max(cc); C = C(r,c,:); alpha =
 imwrite(uint8(C), fullfile(outdir,[name '.png']), 'Alpha', alpha); delete(fw); delete(fkp);
 end
 
-function render_t(cortex, y, cl, cmap, outdir, name)
-% Transparent twin of render() for the reconstruction supplement.
-for v = 1:2
-    if v==1, vw=[-90 0]; hemi='lh'; else, vw=[90 0]; hemi='rh'; end
-    figure('color','w','position',[100 100 560 500]);
-    ft_plot_mesh(cortex, 'vertexcolor','curv', 'edgecolor','none'); hold on;
-    ft_plot_mesh(cortex, 'vertexcolor', y, 'edgecolor','none');
-    colormap(cmap); clim(cl); view(vw); axis off;
-    savepanel(outdir, [name '_' hemi '_lateral']);
-end
-end
-
-function [R, kvec] = pc_reconstruction(stat, statRSF, cortex, cmap, outdir, do_maps)
+function [R, kvec, Vc] = pc_reconstruction(stat, statRSF, cortex, cmap, outdir, do_maps)
 % How well does each surrogate ensemble's own PC basis reconstruct the OBSERVED group t-map?
 % RSF surrogates stay closer to the empirical topography, so few RSF PCs already explain the real
 % map -- i.e. the RSF null has not broken the structure it is meant to destroy. SMOOTH's ensemble is
@@ -238,7 +229,9 @@ function [R, kvec] = pc_reconstruction(stat, statRSF, cortex, cmap, outdir, do_m
 % is accumulated incrementally (yh = yh + b_k*(b_k'y)) instead of rebuilding B_k(B_k'y) at every k,
 % making the whole curve O(V*K) rather than O(V*K^2) -- so computing well past the plotted range is
 % essentially free, and changing the displayed x-limit later needs NO re-run: just replot from
-% genFig5_results.mat (fields recon_r / recon_k).
+% genFig5_results.mat (fields recon_r / recon_k). Vc is the fraction of the observed map's variance
+% (sum of squares of the centred map) that lies in the first k PCs, |B_k'y|^2 / |y|^2 (field recon_var);
+% genFigS7_tencomponents draws its value at k = 10 for all three datasets.
 KMAX = 500; XMAX = 250; KSHOW = [1 3 10];
 t = double(stat.stat(:));
 m = isfinite(t) & ~isnan(stat.surrogate_group(:,1)) & ~isnan(statRSF.surrogate_group(:,1));
@@ -246,19 +239,21 @@ y = t(m); y = y - mean(y);
 
 ens = struct('lab',{'SMOOTH','RSF'}, 'E',{stat.surrogate_group(m,:), statRSF.surrogate_group(m,:)}, ...
              'col',{[0.20 0.35 0.65],[0.85 0.35 0.15]});
-R = nan(KMAX, numel(ens));
+R = nan(KMAX, numel(ens)); Vc = nan(KMAX, numel(ens));
 for e = 1:numel(ens)
     B = pca(double(ens(e).E)');                            % vertices x ncomp, orthonormal columns
     K = min(KMAX, size(B,2));
-    yh = zeros(size(y));
+    yh = zeros(size(y)); cap = 0;
     for k = 1:K
-        yh = yh + B(:,k)*(B(:,k)'*y);                      % cumulative projection onto the first k PCs
+        ck = B(:,k)'*y;
+        yh = yh + B(:,k)*ck;                               % cumulative projection onto the first k PCs
+        cap = cap + ck^2; Vc(k,e) = cap/(y'*y);            % variance of the observed map captured so far
         R(k,e) = corr(yh, y);
         if do_maps && ismember(k, KSHOW)                   % example reconstruction + residual map
             full = nan(numel(t),1); full(m) = yh;
-            render_t(cortex, full, [-4 4], cmap, outdir, sprintf('recon_%s_k%02d', ens(e).lab, k));
+            render(cortex, full, [-4 4], cmap, outdir, sprintf('recon_%s_k%02d', ens(e).lab, k));
             full(m) = y - yh;                              % residual, same scale as the t-map
-            render_t(cortex, full, [-4 4], cmap, outdir, sprintf('reconerr_%s_k%02d', ens(e).lab, k));
+            render(cortex, full, [-4 4], cmap, outdir, sprintf('reconerr_%s_k%02d', ens(e).lab, k));
         end
     end
 end
@@ -280,27 +275,56 @@ exportgraphics(f, fullfile(outdir,'pc_reconstruction.pdf'), 'ContentType','vecto
 kvec = (1:KMAX)';
 fprintf('  reconstruction r at k=%s: SMOOTH %s | RSF %s\n', mat2str(KSHOW), ...
         mat2str(round(R(KSHOW,1)',3)), mat2str(round(R(KSHOW,2)',3)));
+fprintf('  variance captured at k=%s: SMOOTH %s | RSF %s\n', mat2str(KSHOW), ...
+        mat2str(round(100*Vc(KSHOW,1)',1)), mat2str(round(100*Vc(KSHOW,2)',1)));
+end
+
+function [m, keep] = hemimesh(cortex, hemi)
+% One hemisphere of the fsaverage mesh (left = first half of the vertices) with its curvature.
+nL = size(cortex.pos,1)/2;
+if strcmp(hemi,'lh'), keep = (1:nL)'; tri = cortex.tri(all(cortex.tri <= nL, 2), :);
+else, keep = (nL+1:2*nL)'; tri = cortex.tri(all(cortex.tri > nL, 2), :) - nL; end
+m = struct('pos', cortex.pos(keep,:), 'tri', tri, 'curv', cortex.curv(keep));
 end
 
 function render(cortex, y, cl, cmap, outdir, name)
+% Lateral view of each hemisphere. Covered vertices are drawn as their own surface over the
+% curvature-shaded cortex, so uncovered (NaN) vertices leave no artefacts; saved as a transparent
+% PNG (savepanel). Used for the coverage and t-map panels and the Supp Fig 7 reconstructions.
+y = y(:);
 for v = 1:2
     if v==1, vw=[-90 0]; hemi='lh'; else, vw=[90 0]; hemi='rh'; end
-    f = figure('color','w','position',[100 100 560 500]);
-    ft_plot_mesh(cortex, 'vertexcolor','curv', 'edgecolor','none'); hold on;
-    ft_plot_mesh(cortex, 'vertexcolor', y, 'edgecolor','none');
+    [m, keep] = hemimesh(cortex, hemi); f = y(keep);
+    figure('color','w','position',[100 100 560 500]); axes('Position',[0.02 0.04 0.96 0.9]);
+    ft_plot_mesh(m, 'vertexcolor','curv', 'edgecolor','none'); hold on;
+    k = isfinite(f);
+    if any(k)
+        vm = zeros(size(m.pos,1),1); vm(k) = 1:nnz(k); fk = all(k(m.tri),2);
+        s.pos = m.pos(k,:); s.tri = vm(m.tri(fk,:));
+        ft_plot_mesh(s, 'vertexcolor', f(k), 'edgecolor','none');
+    end
     colormap(cmap); clim(cl); view(vw); axis off;
-    exportgraphics(f, fullfile(outdir,[name '_' hemi '_lateral.pdf']), 'ContentType','image','Resolution',450); close(f);
+    savepanel(outdir, [name '_' hemi '_lateral']);
 end
 end
 
-function berry(cortex, elec, dv, cl, cmap, outdir, name)
+function berry(cortex, source, cl, cmap, outdir, name)
+% Electrode values as spheres at each electrode's nearest vertex of the hemisphere shown
+% (hemisphere by the sign of x, as in SMOOTHstat); transparent PNG.
 for v = 1:2
     if v==1, vw=[-90 0]; hemi='lh'; else, vw=[90 0]; hemi='rh'; end
-    f = figure('color','w','position',[100 100 560 500]);
-    ft_plot_mesh(cortex, 'vertexcolor','curv', 'edgecolor','none'); hold on;
-    ft_plot_cloud(elec, dv, 'cloudtype','surf','radius',2.5,'scalerad','no','colormap',cmap,'clim',cl);
+    m = hemimesh(cortex, hemi); E = []; V = [];
+    for i = 1:numel(source)
+        cp = double(source{i}.elec.chanpos); dv = double(source{i}.stat(:));
+        sel = (cp(:,1) < 0) == strcmp(hemi,'lh');
+        E = [E; cp(sel,:)]; V = [V; dv(sel)]; %#ok<AGROW>
+    end
+    e = m.pos(knnsearch(m.pos, E), :);
+    figure('color','w','position',[100 100 560 500]); axes('Position',[0.02 0.04 0.96 0.9]);
+    ft_plot_mesh(m, 'vertexcolor','curv', 'edgecolor','none'); hold on;
+    ft_plot_cloud(e, V, 'cloudtype','surf','radius',2.5,'scalerad','no','colormap',cmap,'clim',cl);
     view(vw); axis off;
-    exportgraphics(f, fullfile(outdir,[name '_' hemi '_lateral.pdf']), 'ContentType','image','Resolution',450); close(f);
+    savepanel(outdir, [name '_' hemi '_lateral']);
 end
 end
 
@@ -309,23 +333,6 @@ f = figure('color','w','position',[100 100 150 430]);
 ax = axes('Parent',f,'Position',[0.05 0.06 0.02 0.88]); axis(ax,'off'); colormap(ax,cmap); set(ax,'CLim',cl);
 cb = colorbar(ax,'Position',[0.32 0.06 0.22 0.88]); cb.Limits = cl; set(cb,'FontSize',14); ylabel(cb,label,'FontSize',14);
 exportgraphics(f,fullfile(outdir,[name '.pdf']),'ContentType','vector'); close(f);
-end
-
-function null_hist(stat, statRSF, outdir)
-sm = stat.posdistribution(:); rf = statRSF.posdistribution(:);
-mass = [stat.posclusters.clusterstat]; prob = [stat.posclusters.prob];
-f = figure('color','w','position',[100 100 620 460]); hold on; box off
-edges = linspace(0, max([sm; rf; mass(:); 1])*1.05, 45);
-histogram(sm, edges, 'FaceColor',[0.18 0.55 0.34], 'EdgeColor','none', 'FaceAlpha',0.65);   % SMOOTH null (green)
-histogram(rf, edges, 'FaceColor',[0.85 0.37 0.05], 'EdgeColor','none', 'FaceAlpha',0.50);   % RSF null (orange)
-xline(prctile(rf,95),'--','RSF 95th','Color',[0.7 0.3 0],'LabelVerticalAlignment','top');
-xline(prctile(sm,95),'--','SMOOTH 95th','Color',[0.1 0.4 0.2],'LabelVerticalAlignment','bottom');
-for k = 1:min(numel(mass),3)
-    xline(mass(k), '-', sprintf('p=%.3f',prob(k)), 'Color','k', 'LineWidth',1.2, 'LabelOrientation','horizontal');
-end
-set(gca,'FontSize',12); xlabel('max cluster mass (null)'); ylabel('count');
-legend({'SMOOTH null','RSF null'}, 'Box','off','Location','northeast');
-exportgraphics(f, fullfile(outdir,'null_distribution.pdf'), 'ContentType','vector'); close(f);
 end
 
 function [nZ, nY, cumZ, cumY] = pc_variance(stat, statRSF, outdir)
@@ -345,38 +352,48 @@ title(sprintf('nPC90 = %d (SMOOTH), %d (RSF)', nZ, nY));
 exportgraphics(f, fullfile(outdir,'pc_variance.pdf'), 'ContentType','vector'); close(f);
 end
 
-function [pp, nok, emp_out, nul_out] = sa_scatter(cfg, source, adj, NSA, seed, outdir)
-% Per-subject spatial autocorrelation (Moran's I): empirical map vs mean over NSA surrogate maps.
-c = cfg; c.numrandomization = NSA; c.keepmaps = 'yes'; c.keepsubsurrogates = 'yes'; c.keepgroupsurrogates = 'no';
-c.randomseed = seed;
-s = SMOOTHstat(c, source{:});
-maps = s.maps; surr = s.surrogate_subject;                          % orient to V x S (x P)
-if size(maps,1) ~= size(adj,1), maps = maps.'; end
-if ndims(surr)==3 && size(surr,1) ~= size(adj,1), surr = permute(surr,[2 1 3]); end
-S = size(maps,2); emp = nan(S,1); nul = nan(S,1);
-for si = 1:S
-    emp(si) = moran_map(maps(:,si), adj);
-    nul(si) = mean(arrayfun(@(p) moran_map(surr(:,si,p), adj), 1:size(surr,3)), 'omitnan');
+function [pp, tt, n, emp, nmu, nsd] = sa_panel(M, primary, outdir)
+% Per-participant spatial autocorrelation (Moran's I) of the empirical map vs the mean over that
+% participant's SMOOTH surrogates (horizontal bars: surrogate SD), from SMOOTHdiag values saved in
+% paper/data/fig5_sa_moran.mat. Axes zoom to the data plus an 8% pad and are labelled at the ends only.
+% For the validation datasets, participants whose surrogate Moran's I lies below the largest gap (> 0.02)
+% in the lower half of the surrogate values are drawn clamped at the left edge with their value.
+emp = M.emp(:); nmu = M.null_mu(:); nsd = M.null_sd(:);
+ok = isfinite(emp) & isfinite(nmu); emp = emp(ok); nmu = nmu(ok); nsd = nsd(ok); n = nnz(ok);
+[~,pp,~,ts] = ttest(emp, nmu); tt = ts.tstat;
+inb = true(size(nmu));
+if ~primary
+    sv = sort(nmu); g = diff(sv); g(sv(1:end-1) >= median(nmu)) = 0;
+    if ~isempty(g)
+        [maxgap, gi] = max(g);
+        if maxgap > 0.02, inb = nmu >= (sv(gi)+sv(gi+1))/2; end
+    end
 end
-ok = isfinite(emp) & isfinite(nul);
-f = figure('color','w','position',[100 100 460 460]); hold on; box off; grid on
-lim = [min([emp(ok);nul(ok)])*0.98, max([emp(ok);nul(ok)])*1.02];
-plot(lim, lim, 'k--', 'LineWidth',1);
-scatter(nul(ok), emp(ok), 28, [0.18 0.55 0.34], 'filled', 'MarkerFaceAlpha',0.6);
-[~,pp] = ttest(emp(ok), nul(ok));
-set(gca,'FontSize',12); axis square; xlim(lim); ylim(lim);
-xlabel('surrogate SA (Moran''s I)'); ylabel('empirical SA (Moran''s I)');
-title(sprintf('paired t p = %.2f (n=%d)', pp, nnz(ok)));
+sd0 = nsd; sd0(isnan(sd0)) = 0;
+bulk = [emp(inb); nmu(inb)-sd0(inb); nmu(inb)+sd0(inb)]; pad = 0.08*range(bulk);
+lim = [min(bulk)-pad, max(bulk)+pad];
+f = figure('color','w','units','centimeters','Position',[0 0 11 11]); hold on
+plot(lim, lim, '-', 'Color',[0.7 0.7 0.7], 'LineWidth', 1 + 0.5*primary);
+errorbar(nmu(inb), emp(inb), nsd(inb), 'horizontal', 'LineStyle','none', 'Color',[0.6 0.6 0.6], 'CapSize',0, 'LineWidth',0.5);
+scatter(nmu(inb), emp(inb), 100, 'filled', 'MarkerFaceColor',[53 154 71]/255, 'MarkerFaceAlpha',0.80, 'MarkerEdgeColor','none');
+C_off = [0.78 0.20 0.15]; off = find(~inb); r = range(lim);
+for j = 1:numel(off)
+    k = off(j); yc = min(max(emp(k),lim(1)),lim(2));
+    plot([lim(1)+0.16*r, lim(1)+0.03*r], [yc yc], '-', 'Color',C_off, 'LineWidth',1.2, 'Clipping','off');
+    plot(lim(1)+0.03*r, yc, '<', 'MarkerSize',8, 'MarkerFaceColor',C_off, 'MarkerEdgeColor','none', 'Clipping','off');
+    text(lim(1)+0.18*r, yc, sprintf('surr=%.2f', nmu(k)), 'Color',C_off, 'FontSize',8, 'VerticalAlignment','middle');
+end
+if primary, xlabel('surrogate Moran''s I (subject mean)'); else, xlabel('surrogate Moran''s I'); end
+ylabel('empirical Moran''s I');
+ttl = sprintf('t(%d) = %.2f, p = %.3g', ts.df, ts.tstat, pp);
+if ~isempty(off), ttl = sprintf('%s  (%d off-scale)', ttl, numel(off)); end
+title(ttl, 'FontWeight','normal');
+axis square; xlim(lim); ylim(lim); box off;
+tk = linspace(lim(1), lim(2), 6); xticks(tk); yticks(tk);
+lab = repmat({''},1,6); lab{1} = num2str(lim(1),'%.3f'); lab{6} = num2str(lim(2),'%.3f');
+xticklabels(lab); yticklabels(lab);
+grid on; set(gca,'FontSize', 11 + primary, 'TickDir','in');
 exportgraphics(f, fullfile(outdir,'sa_scatter.pdf'), 'ContentType','vector'); close(f);
-nok = nnz(ok); emp_out = emp(ok); nul_out = nul(ok);
-end
-
-function I = moran_map(x, adj)
-x = x(:); v = find(isfinite(x));
-if numel(v) < 2, I = NaN; return; end
-xr = x(v) - mean(x(v)); W = adj(v,v); S0 = full(sum(W(:))); den = sum(xr.^2);
-if S0 == 0 || den <= 0, I = NaN; return; end
-I = (numel(v)/S0) * (xr' * (W * xr)) / den;
 end
 
 function v = def(x), if isempty(x), v = NaN; else, v = x; end, end

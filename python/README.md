@@ -40,12 +40,20 @@ autocorrelation diagnostic (`ss.moran_sa`).
 
 ## Notes
 
-- **Coordinates**: electrode `chanpos` must be in fsaverage space (the frame the MATLAB pipeline uses).
-  A +[1,1,1] offset is applied internally to match FieldTrip's `ft_read_headshape` frame.
+- **Coordinates**: electrode `chanpos` must be in fsaverage surface space (the frame the MATLAB pipeline
+  uses). Surfaces are used exactly as stored, as in MATLAB. On `fsaverage`, a warning is issued if a
+  subject's electrodes sit on the pial surface shifted by +[1,1,1] mm, the signature of coordinates made
+  with a modified `read_surf.m` (see the main README); `fsaverage5` is too coarse for this check.
+- **Agreement with MATLAB**: maps, t-statistics, coverage and observed cluster masses match `SMOOTHstat.m`
+  to floating-point precision. Null distributions, and hence p-values, agree statistically rather than
+  bit for bit: the random number generators differ, and so can the eigenvector basis that numpy and MATLAB
+  pick when an electrode graph splits into disconnected parts.
 - **Resolution**: `fsaverage` reproduces the manuscript; `fsaverage5` is a fast lower-resolution option
   (the simulations in Figures 3-4 use it). Run with `numrand=1000` for reported p-values.
 - **Tail**: positive and negative clusters are each tested against their own null (one-tailed p-values).
-  `sig` applies `alpha` for `'positive'` / `'negative'`, and `alpha/2` per tail for `'both'`.
+  `sig` applies `alpha` for `'positive'` / `'negative'`, and `alpha/2` per tail for `'both'`. Note that
+  `run_smoothstat` defaults to `tail="positive"` (the manuscript's directional test), whereas `SMOOTHstat.m`
+  defaults to `'both'`; pass `tail` explicitly.
 - See [`../demo/smoothdemo.py`](../demo/smoothdemo.py) for a runnable walkthrough that reproduces the
   manuscript's primary-dataset clusters end to end (`python ../demo/smoothdemo.py`, or `--quick` for
   a fast fsaverage5 sanity check); [`../demo/SMOOTHdemo.ipynb`](../demo/SMOOTHdemo.ipynb) for a

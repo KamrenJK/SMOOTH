@@ -18,8 +18,9 @@ function stat = SMOOTHsub(cfg, source)
 %   cfg.kernel           = 'gaussian' (default) | 'boxcar'
 %   cfg.kernelwidth      = FWHM (gaussian) or radius (boxcar) in mm (default 12)
 %   cfg.graphsigma       = Laplacian kernel σ for spectral surrogates in mm (default 8)
-%   cfg.rankrescale      = 'no' (default) | 'exact' | 'quantile' | 'zscore'
-%   cfg.randmethod       = 'signflip' (default) | 'bandrotate'
+%   cfg.rankrescale      = 'exact' (default, recommended) | 'quantile' | 'zscore' | 'no' -- see SMOOTHstat
+%   cfg.randmethod       = 'signflip' (default; the only supported method) |
+%                          'bandrotate' (experimental, not validated)
 %   cfg.numrandomization = surrogates to generate (default 1000)
 %   cfg.randomseed       = [] (default) | integer -- see SMOOTHstat
 %   cfg.keepmaps         = 'no' | 'yes'  return the empirical cortical map
@@ -41,7 +42,7 @@ function stat = SMOOTHsub(cfg, source)
 % cluster-based inference; SMOOTHsub is for single-subject illustration and QC.
 %
 % Requirements: FreeSurfer fsaverage, FieldTrip
-% Authors: Kamren Khan & Arjen Stolk, v0.1
+% Authors: Kamren Khan & Arjen Stolk, v0.2.0
 
 
 % ---- Defaults
@@ -51,7 +52,7 @@ cfg.smooth           = ft_getopt(cfg, 'smooth',          'sphere');
 cfg.kernel           = ft_getopt(cfg, 'kernel',        'gaussian');
 cfg.kernelwidth      = ft_getopt(cfg, 'kernelwidth',           12); % mm FWHM, matches SMOOTHstat
 cfg.graphsigma       = ft_getopt(cfg, 'graphsigma',             8); % mm
-cfg.rankrescale      = ft_getopt(cfg, 'rankrescale',         'no');
+cfg.rankrescale      = ft_getopt(cfg, 'rankrescale',      'exact');
 cfg.randmethod       = ft_getopt(cfg, 'randmethod',    'signflip');
 cfg.numrandomization = ft_getopt(cfg, 'numrandomization',    1000);
 cfg.randomseed       = ft_getopt(cfg, 'randomseed',            []);
@@ -67,10 +68,10 @@ else
 end
 
 % ---- Meshes (fsaverage) and adjacency (for clustering)
-lh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.pial'));
-rh      = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.pial'));
-sph_l   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
-sph_r   = ft_read_headshape(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
+lh      = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.pial'));
+rh      = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.pial'));
+sph_l   = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','lh.sphere.reg'));
+sph_r   = smooth_read_surf(fullfile(cfg.fshome,'subjects','fsaverage','surf','rh.sphere.reg'));
 sph.pos = [sph_l.pos; sph_r.pos];
 sph.tri = [sph_l.tri; sph_r.tri + size(sph_l.pos,1)];
 i = [sph.tri(:,1); sph.tri(:,1); sph.tri(:,2); sph.tri(:,2); sph.tri(:,3); sph.tri(:,3)];
@@ -100,7 +101,7 @@ e2m_cache = struct('pial', struct('L', [], 'R', []), ...
   'sphere', struct('kdtL', [], 'kdtR', []));
 
 data = source;
-dv   = data.(cfg.parameter);
+dv   = data.(cfg.parameter)(:);
 pos  = data.elec.chanpos;
 hemi = pos(:,1) < 0;  % fsavg: L<0
 nL = sum(hemi);
@@ -145,7 +146,7 @@ data.elec.Rh_sph = Rh_sph;
 Q = blkdiag(QL, QR); % (nL+nR) x (nL+nR)
 
 % (c) Projection (modal coefficients)
-y                = data.(cfg.parameter);
+y                = data.(cfg.parameter)(:);
 y                = [y(data.elec.hemi); y(~data.elec.hemi)];  % reorder;
 data.modes       = Q;                         % elecs x modes
 data.modalcoeffs = Q' * y;
@@ -160,9 +161,7 @@ data.B           = data.modes * spdiags(data.modalcoeffs,0,length(data.modalcoef
 % illustration and QC (see paper/code/genFig2_surrogates.m, genFigS2.m).
 fprintf('generating subject-level surrogates\n')
 
-% sflipmat is small (nmodes x nperm) and is always returned in stat.data, so it
-% must be allocated unconditionally -- guarding it behind keepsurrogates caused an
-% undefined-variable error on any run using the default cfg.keepsurrogates='no'.
+% sflipmat is small (nmodes x nperm) and is always returned in stat.data.
 sflipmat = zeros(length(data.modalcoeffs), cfg.numrandomization);
 if strcmp(cfg.keepsurrogates, 'yes')
   surr_subj = zeros(size(sph.pos,1), cfg.numrandomization);
@@ -279,7 +278,7 @@ switch lower(cfg.smooth)
     if strcmpi(cfg.kernel,'gaussian')
       % σ in sphere units, support ~ 3σ
       sig_unit = mm2sphere(sigma_mm);
-      R        = 3*max(sig_unit, eps);  % CHANGED TO 2!!
+      R        = 3*max(sig_unit, eps);
       cand_all = rangesearch(kdt, surf_sph.pos(double(idx),:), R);
       for e=1:numel(idx)
         s    = double(idx(e));
@@ -306,16 +305,15 @@ switch lower(cfg.smooth)
       error('cfg.kernel must be ''gaussian'' or ''boxcar''.');
     end
 
-    % % COL
+    % column-normalized projector: each electrode spreads unit mass
     W   = sparse(I,J,Wvals,nVert,numel(idx));
     col = full(sum(W,1));
     C   = spdiags(1./max(col,eps)', 0, size(W,2), size(W,2));
     P   = W * C; 
 
-    % % ROW
+    % vertices with any electrode support
     den = full(sum(W,2));
     m   = den>0;
-    % P   = spdiags(1./max(den,eps),0,nVert,nVert) * W;
 
     % ====================== PIAL / GEODESIC (mm) ======================
     % Slower but more anatomically faithful. Uses geodesic distances on

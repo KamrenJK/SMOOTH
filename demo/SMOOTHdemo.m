@@ -13,7 +13,7 @@
 %   - FreeSurfer installation (for fsaverage surfaces)
 %   - example dataset: demo/source.mat (distributed with the toolbox)
 %
-% Authors: Kamren Khan & Arjen Stolk, v0.1
+% Authors: Kamren Khan & Arjen Stolk, v0.2.0
 % -------------------------------------------------------------------------
 
 clear; clc; close all;
@@ -64,8 +64,9 @@ stat = SMOOTHstat(cfg, source{:});
 t = toc;
 fprintf('SMOOTHstat completed in %.2f s.\n', t);
 
-% significant clusters
-sig = find([stat.posclusters.prob] <= 0.05);
+% significant clusters: with cfg.tail = 'both', each tail is tested at alpha/2
+alpha = 0.05; if strcmp(cfg.tail, 'both'), alpha = alpha/2; end
+sig = find([stat.posclusters.prob] <= alpha);
 fprintf('%d significant positive cluster(s)\n', numel(sig));
 for k = sig
     fprintf('   cluster %d: p = %.4f, mass = %.1f\n', ...
